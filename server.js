@@ -178,7 +178,7 @@ app.get('/api/leaders', (req, res) => {
     for (const t of engine.boxFor(g.id).values()) {
       const nv = nflverse.get(t.id);
       if (!nv && !t.name) continue;
-      players.push({ id: t.id, name: nv?.name || t.name, pos: nv?.pos || 'K', team: nv?.team || t.team, ppr: t.ppr, line: t.line, gameState: g.state });
+      players.push({ id: t.id, name: nv?.name || t.name, pos: nv?.pos || 'K', team: nv?.team || t.team, ppr: t.ppr, line: t.line, gameState: g.state, headshot: nv?.headshot || t.headshot || '' });
     }
   }
   players.sort((a, b) => b.ppr - a.ppr);

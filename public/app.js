@@ -161,6 +161,7 @@
     S.games = list;
     S.gamesById = new Map(list.map((g) => [g.id, g]));
     renderStrip();
+    renderLive();
   }
   function kickoff(g, long = false) {
     const d = new Date(g.start);
@@ -230,7 +231,7 @@
     $('#strip').innerHTML = S.games.map((g) => {
       const started = g.state !== 'pre';
       const row = (t, other) => `<div class="row ${g.state === 'post' && t.score < other.score ? 'lose' : ''}">${tlogo(t.abbr)}<span class="${g.state === 'in' && g.possession === t.id ? 'poss' : ''}">${esc(t.abbr)}</span><span class="sc ${started ? '' : 'rec'}">${started ? t.score : esc(t.record || '')}</span></div>`;
-      return `<button class="chip-game ${cur === g.id ? 'on' : ''}" data-act="go" data-href="#/game/${esc(g.id)}">
+      return `<button class="chip-game ${cur === g.id ? 'on' : ''} ${g.state === 'in' ? 'is-live' : ''}" style="--a:${esc(g.away.color || '#555')};--h:${esc(g.home.color || '#555')}" data-act="go" data-href="#/game/${esc(g.id)}">
         ${row(g.away, g.home)}${row(g.home, g.away)}
         <div class="meta"><span>${gameStatus(g)}</span><span>${esc(g.state === 'pre' ? lineText(g) : g.downDistance || g.broadcast || '')}</span></div>
       </button>`;
@@ -314,6 +315,55 @@
       <button class="cmt-btn" data-act="comments" data-id="${esc(p.id)}" aria-label="Comments">${chatIcon}${s.comments}</button>
     </div>`;
   }
+  // A mini field showing where the play started and where it ended
+  const FIELD_KINDS = new Set(['catch', 'rush', 'sack']);
+  function spotName(yte, off, def) {
+    if (yte <= 0) return 'End zone';
+    if (yte === 50) return '50';
+    return yte > 50 ? `${off} ${100 - yte}` : `${def} ${yte}`;
+  }
+  function fieldBar({ start, end = start, off, def, loss = false, td = false, label = '' }) {
+    const lo = Math.min(start, end), hi = Math.max(start, end);
+    const o = teamInfo(off), d = teamInfo(def);
+    return `<div class="fieldbar" style="--off:${esc(o.color || '#555')};--def:${esc(d.color || '#555')}" aria-hidden="true">
+      <div class="fb-field"><i class="ez l"></i><i class="ez r"></i><div class="fb-yards">
+        <span class="fb-los" style="left:${start}%"></span>
+        ${hi > lo ? `<span class="fb-run ${loss ? 'loss' : ''} ${td ? 'td' : ''}" style="left:${lo}%;width:${hi - lo}%"></span>` : ''}
+        <span class="fb-ball" style="left:${end}%"></span></div></div>
+      ${label ? `<div class="fb-label">${label}</div>` : ''}</div>`;
+  }
+  function playField(p) {
+    if (p.yte == null || !FIELD_KINDS.has(p.kind) || !p.offense || !p.defense) return '';
+    const yards = Number(p.yards) || 0;
+    const start = 100 - p.yte;
+    const end = p.td ? 100 : Math.max(0, Math.min(100, start + yards));
+    const from = spotName(p.yte, p.offense, p.defense), to = p.td ? 'End zone' : spotName(100 - end, p.offense, p.defense);
+    const label = `<span>${esc(from)} <em>→</em> ${esc(to)}</span><b class="${yards < 0 ? 'minus' : ''}">${yards > 0 ? '+' : ''}${yards} yd</b>`;
+    return fieldBar({ start, end, off: p.offense, def: p.defense, loss: yards < 0, td: p.td, label });
+  }
+  function badges(p) {
+    const out = [];
+    if (p.td) out.push('<span class="badge td">Touchdown</span>');
+    if (p.kind === 'int' || p.players.some((x) => x.stat?.fumLost)) out.push('<span class="badge to">Turnover</span>');
+    else if (p.explosive && !p.td) out.push('<span class="badge big">Big play</span>');
+    return out.join('');
+  }
+  // Fresh plays count their points up from zero
+  function countUp(root) {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    root.querySelectorAll('.ppr .v').forEach((el) => {
+      const txt = el.textContent, m = txt.match(/^([+−]?)(\d+(?:\.\d+)?)$/);
+      if (!m) return;
+      const target = Number(m[2]), dec = (m[2].split('.')[1] || '').length, t0 = performance.now(), dur = 700;
+      const step = (t) => {
+        const k = Math.min(1, (t - t0) / dur), e = 1 - (1 - k) ** 3;
+        el.textContent = `${m[1]}${(target * e).toFixed(dec)}`;
+        if (k < 1) requestAnimationFrame(step); else el.textContent = txt;
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
   function playCard(p, { fresh = false, full = false } = {}) {
     const prim = primaryOf(p);
     const minor = !full && (p.kind === 'kickoff' || p.kind === 'punt' || p.kind === 'penalty' || p.kind === 'other') && !p.players.length;
@@ -325,7 +375,7 @@
     const pts = prim ? prim.ppr : 0;
     const cls = pts >= 10 ? 'boom' : pts < 0 ? 'neg' : pts === 0 ? 'zero' : '';
     const others = p.players.filter((x) => x !== prim);
-    const meta = [when, p.downText ? esc(p.downText) : '', ago(p.ts)].filter(Boolean).map((x) => `<span>${x}</span>`).join('<span>·</span>');
+    const meta = [when, p.downText ? esc(p.downText) : '', ago(p.ts)].filter(Boolean).map((x) => `<span>${x}</span>`).join('<span>·</span>') + badges(p);
     const who = prim
       ? `<div class="who-row">${face(prim)}<div><h3 class="pname">${esc(prim.name)}<small>${esc([prim.pos, prim.team].filter(Boolean).join(' · '))}</small></h3><div class="headline ${p.td ? 'td' : ''}">${esc(p.headline)}</div></div></div>`
       : `<div class="who-row"><div><h3 class="pname">${esc(p.headline)}</h3></div></div>`;
@@ -335,11 +385,12 @@
     }).join('')}</div>` : '';
     const teamColor = prim?.team ? teamInfo(prim.team).color : '';
     const spot = pts >= 10 && teamColor ? ` spot" style="--team:${esc(teamColor)}` : '';
-    return `<article class="play ${fresh ? 'fresh' : ''}${spot}" data-play="${esc(p.id)}">
+    return `<article class="play ${fresh ? 'fresh' : ''} ${p.td ? 'is-td' : ''}${spot}" data-play="${esc(p.id)}">
       <div class="ppr ${cls}" title="${esc(prim?.name || 'No one')} scored ${signed(pts, 2)} PPR on this play"><span class="v">${signed(pts, 1)}</span><span class="u">PPR</span></div>
       <div class="body">
         <div class="play-meta">${scoreLine(p)}${meta}</div>
         ${who}
+        ${playField(p)}
         ${prim ? breakdownHtml(prim) : ''}
         ${paceHtml(prim)}
         ${also}
@@ -362,6 +413,46 @@
     }
   }
 
+  // ---------- live now ----------
+  S.lastPlay = new Map();   // gameId -> most recent play seen
+  S.hot = new Map();        // gameId -> best PPR player seen today
+  function notePlays(plays) {
+    for (const p of plays) {
+      const cur = S.lastPlay.get(p.gameId);
+      if (!cur || p.seq > cur.seq) S.lastPlay.set(p.gameId, p);
+      for (const x of p.players || []) {
+        if (x.pos === 'DST' || x.gamePpr == null) continue;
+        const h = S.hot.get(p.gameId);
+        if (!h || x.gamePpr > h.gamePpr || (h.id === x.id && p.seq > (h.seq || 0))) S.hot.set(p.gameId, { ...x, seq: p.seq });
+      }
+    }
+  }
+  function liveCard(g) {
+    const last = S.lastPlay.get(g.id);
+    const possTeam = g.possession === g.home.id ? g.home : g.possession === g.away.id ? g.away : null;
+    let field = '';
+    if (last && possTeam && last.offense === possTeam.abbr && last.yte != null && !last.td && !last.scoring) {
+      const yte = Math.max(1, Math.min(99, last.yte - (Number(last.yards) || 0)));
+      const def = possTeam === g.home ? g.away.abbr : g.home.abbr;
+      field = fieldBar({ start: 100 - yte, off: possTeam.abbr, def, label: `<span>${esc(possTeam.abbr)} ball · ${esc(spotName(yte, possTeam.abbr, def))}</span><b>${esc(g.downDistance || '')}</b>` });
+    }
+    const hot = S.hot.get(g.id);
+    const side = (t, o) => `<div class="lc-team ${t.score < o.score ? 'trail' : ''}">${tlogo(t.abbr)}<span class="ab">${esc(t.abbr)}</span>${possTeam === t ? '<i class="lc-poss" title="Has the ball"></i>' : ''}<b>${t.score}</b></div>`;
+    return `<a class="live-card ${g.redZone ? 'rz' : ''}" href="#/game/${esc(g.id)}" style="--a:${esc(g.away.color || '#555')};--h:${esc(g.home.color || '#555')}">
+      <div class="lc-top"><span class="lc-live"><i></i>Live</span><span>${esc(g.detail || '')}</span>${g.redZone ? '<span class="lc-rz">Red zone</span>' : ''}<span class="lc-tv">${esc(g.broadcast || '')}</span></div>
+      <div class="lc-score">${side(g.away, g.home)}${side(g.home, g.away)}</div>
+      ${field}
+      ${hot ? `<div class="lc-hot">${face(hot, 'face sm')}<span><small>Hottest right now</small>${esc(hot.name)}</span><b>${fmt(hot.gamePpr)}</b></div>` : ''}
+    </a>`;
+  }
+  function renderLive() {
+    const el = $('#liveNow');
+    if (!el) return;
+    const live = isCurrentWeek() ? S.games.filter((g) => g.state === 'in') : [];
+    el.hidden = !live.length;
+    el.innerHTML = live.length ? `<div class="label lc-label"><i class="pulse"></i>Live now · ${live.length} game${live.length > 1 ? 's' : ''}</div><div class="live-grid">${live.map(liveCard).join('')}</div>` : '';
+  }
+
   // ---------- feed view ----------
   async function loadFeed(append = false) {
     if (S.feed.loading) return;
@@ -373,6 +464,8 @@
     try {
       const r = await api(`/api/feed?${qs}`);
       S.feed.plays = append ? S.feed.plays.concat(r.plays) : r.plays;
+      notePlays(r.plays);
+      renderLive();
       S.feed.next = r.next;
       if (!append) S.pending = [];
       renderFeedList();
@@ -417,7 +510,8 @@
     const games = S.games.length, done = S.games.filter((g) => g.state === 'post').length;
     const aside = isCurrentWeek() ? 'Standard PPR · updated every play<br>Plays from ESPN · season stats from nflverse'
       : `Standard PPR · ${games} games${done && done < games ? `, ${done} final` : done ? ', all final' : ''}<br>Plays from ESPN · season stats from nflverse`;
-    view.innerHTML = `${pageHead(`${weekLabel()}${isCurrentWeek() ? ' · Live' : ''}`, 'Every play, in PPR', aside)}${filterTabs()}<div class="feed" id="feedList"></div>`;
+    view.innerHTML = `${pageHead(`${weekLabel()}${isCurrentWeek() ? ' · Live' : ''}`, 'Every play, in PPR', aside)}<section id="liveNow" class="live-now" hidden></section>${filterTabs()}<div class="feed" id="feedList"></div>`;
+    renderLive();
     loadFeed();
   }
 
@@ -613,7 +707,8 @@
     ]);
     let html = '';
     if (leaders) {
-      html += `<section><span class="label">${esc(weekLabel())} · PPR leaders</span>${leaders.players.slice(0, 8).map((p) => `<div class="mini ${S.myLineupIds.has(String(p.id)) ? 'mine' : ''}"><em>${esc(p.pos)}</em><span class="who">${esc(p.name)}<small>${esc(p.team)}</small></span><span class="v amber">${fmt(p.ppr)}</span></div>`).join('')
+      const top = leaders.players[0]?.ppr || 1;
+      html += `<section><span class="label">${esc(weekLabel())} · PPR leaders</span>${leaders.players.slice(0, 8).map((p, i) => `<div class="mini lead ${S.myLineupIds.has(String(p.id)) ? 'mine' : ''} ${i === 0 ? 'first' : ''}">${face(p, 'face sm')}<span class="who">${esc(p.name)}<small>${esc(p.pos)} · ${esc(p.team)}</small><i class="lead-bar"><i style="width:${Math.max(4, Math.round(p.ppr / top * 100))}%"></i></i></span><span class="v amber">${fmt(p.ppr)}</span></div>`).join('')
         || '<p>Leaders show up once games kick off.</p>'}<a class="foot" href="#/feed">All plays →</a></section>`;
     }
     if (S.me) {
@@ -873,9 +968,12 @@
       if (!old) return;
       Object.assign(old, g, { pickOpen: old.pickOpen && g.state === 'pre', splits: old.splits, myPicks: old.myPicks });
       renderStrip();
+      renderLive();
     });
     es.addEventListener('play', (e) => {
       const p = JSON.parse(e.data);
+      notePlays([p]);
+      renderLive();
       if (!$('#feedList') || !matchesFeed(p)) return;
       if (S.feed.plays.some((x) => x.id === p.id)) return;
       if (window.scrollY < 300 && !S.pending.length) {
@@ -884,6 +982,7 @@
         const empty = list.querySelector('.empty');
         if (empty) empty.remove();
         list.insertAdjacentHTML('afterbegin', playCard(p, { fresh: true }));
+        countUp(list.firstElementChild);
       } else {
         S.pending.unshift(p);
         renderFeedList();

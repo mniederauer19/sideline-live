@@ -633,3 +633,119 @@ html[data-look="modern"] .theme-btn { display: none; }
 html[data-look="classic"] .brand > span { text-transform: lowercase; }
 html[data-look="classic"] .brand > span i { text-transform: none; }
 html[data-look="classic"] .page-head .aside { font-size: 14px; line-height: 1.6; }
+
+/* =====================================================================
+   POLISH — field trackers, live-now cards, badges and motion.
+   Built only from each look's own tokens, so Editorial, Classic and
+   Modern keep their fonts and colors.
+   ===================================================================== */
+
+/* page head: a row of field hash marks under the title */
+.page-head { position: relative; }
+.page-head::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 7px; background: repeating-linear-gradient(90deg, var(--line-2) 0 1px, transparent 1px 22px); opacity: 0.55; pointer-events: none; }
+html[data-look="modern"] .page-head::after { opacity: 0.35; }
+
+/* games strip: team-color edge, live glow */
+.chip-game { position: relative; overflow: hidden; transition: border-color 0.2s, transform 0.2s; }
+.chip-game::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: linear-gradient(var(--a), var(--a) 50%, var(--h) 50%, var(--h)); opacity: 0.9; }
+.chip-game:hover { transform: translateY(-1px); }
+.chip-game.is-live { border-color: color-mix(in srgb, var(--live) 45%, var(--line)); box-shadow: 0 0 0 1px color-mix(in srgb, var(--live) 18%, transparent), 0 6px 22px -14px var(--live); }
+.chip-game.is-live .meta .live::before, .lc-live i, .pulse { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--live); vertical-align: 1px; animation: pulse 1.6s ease-out infinite; }
+@keyframes pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--live) 60%, transparent); } 100% { box-shadow: 0 0 0 7px transparent; } }
+
+/* live now: one card per game in progress */
+.live-now { margin: 0 0 22px; }
+.lc-label { display: flex; align-items: center; margin-bottom: 10px; color: var(--live); }
+.live-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; }
+.live-card { position: relative; display: block; overflow: hidden; padding: 14px 16px 14px; border: 1px solid var(--line); border-radius: var(--r-card); color: var(--ink);
+  background: linear-gradient(105deg, color-mix(in srgb, var(--a) 22%, var(--card)) 0%, var(--card) 45%, var(--card) 55%, color-mix(in srgb, var(--h) 22%, var(--card)) 100%);
+  transition: border-color 0.2s, transform 0.2s; }
+.live-card:hover { border-color: var(--line-2); transform: translateY(-2px); }
+.live-card.rz { border-color: color-mix(in srgb, var(--live) 50%, var(--line)); }
+.lc-top { display: flex; align-items: center; gap: 10px; font: var(--label-w) 10.5px/1.3 var(--label-font); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); }
+.lc-live { color: var(--live); display: inline-flex; align-items: center; }
+.lc-rz { padding: 2px 6px; border-radius: 3px; background: var(--live); color: #fff; letter-spacing: 1px; }
+.lc-tv { margin-left: auto; }
+.lc-score { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 12px 0 4px; }
+.lc-team { display: flex; align-items: center; gap: 9px; }
+.lc-team:last-child { flex-direction: row-reverse; }
+.lc-team .tlogo { width: 30px; height: 30px; font-size: 10px; }
+.lc-team .ab { font: 600 15px/1 var(--body); letter-spacing: 0.3px; }
+.lc-team b { font: var(--stat-w) 44px/0.9 var(--stat); letter-spacing: -1px; font-variant-numeric: tabular-nums; margin: 0 4px; }
+.lc-team:first-child b { margin-left: auto; }
+.lc-team:last-child b { margin-right: auto; }
+.lc-team.trail b { color: var(--muted); }
+.lc-poss { width: 7px; height: 7px; border-radius: 50%; background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+.lc-hot { display: flex; align-items: center; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent); font-weight: 600; font-size: 14px; }
+.lc-hot span { flex: 1; min-width: 0; line-height: 1.2; }
+.lc-hot small { display: block; font: var(--label-w) 9.5px/1.3 var(--label-font); letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted); }
+.lc-hot b { font: var(--stat-w) 26px/1 var(--stat); color: var(--gold); font-variant-numeric: tabular-nums; }
+.face.sm, .initials.sm, .mini .initials, .lc-hot .initials { width: 30px; height: 30px; font-size: 12px; }
+
+/* field tracker: own goal on the left, the end zone they're attacking on the right */
+.fieldbar { margin-top: 14px; max-width: 460px; }
+.live-card .fieldbar { margin-top: 10px; max-width: none; }
+.fb-field { position: relative; height: 22px; border-radius: 3px; overflow: hidden;
+  background: color-mix(in srgb, var(--pos) 9%, var(--card-2));
+  box-shadow: inset 0 0 0 1px var(--line); }
+.fb-field .ez { position: absolute; top: 0; bottom: 0; width: 8%; }
+.fb-field .ez.l { left: 0; background: color-mix(in srgb, var(--off) 55%, var(--card-2)); }
+.fb-field .ez.r { right: 0; background: color-mix(in srgb, var(--def) 55%, var(--card-2)); }
+.fb-yards { position: absolute; top: 0; bottom: 0; left: 8%; right: 8%;
+  background: repeating-linear-gradient(90deg, color-mix(in srgb, var(--ink) 16%, transparent) 0 1px, transparent 1px 10%); }
+.fb-yards::after { content: ''; position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: color-mix(in srgb, var(--ink) 30%, transparent); }
+.fb-run { position: absolute; top: 8px; height: 6px; border-radius: 3px; background: var(--gold); box-shadow: 0 0 10px -2px var(--gold); transform-origin: left; }
+.fb-run.loss { background: var(--neg); box-shadow: none; }
+.fb-run.td { background: linear-gradient(90deg, var(--gold), color-mix(in srgb, var(--gold) 70%, #fff)); }
+.fb-los { position: absolute; top: 3px; bottom: 3px; width: 2px; margin-left: -1px; background: color-mix(in srgb, var(--ink) 55%, transparent); }
+.fb-ball { position: absolute; top: 50%; width: 11px; height: 7px; margin: -3.5px 0 0 -5.5px; border-radius: 50%; background: #8a5a32; box-shadow: 0 0 0 1.5px var(--bg); }
+.fb-label { display: flex; justify-content: space-between; gap: 10px; margin-top: 5px; font: var(--label-w) 10.5px/1.3 var(--label-font); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); }
+.fb-label em { font-style: normal; color: var(--dim); margin: 0 2px; }
+.fb-label b { font: 700 13px/1 var(--num); letter-spacing: 0.4px; color: var(--ink-2); }
+.fb-label b.minus { color: var(--neg); }
+.play.fresh .fb-run { animation: run 0.9s cubic-bezier(.2,.8,.2,1) 0.15s both; }
+.play.fresh .fb-ball { animation: ballin 0.9s cubic-bezier(.2,.8,.2,1) 0.15s both; }
+@keyframes run { from { transform: scaleX(0); } }
+@keyframes ballin { from { opacity: 0; } }
+
+/* badges next to the play clock */
+.badge { margin-left: 6px; padding: 2px 7px 1px; border-radius: 3px; font: var(--label-w2) 9.5px/1.4 var(--label-font); letter-spacing: 1.4px; text-transform: uppercase; }
+.badge.td { background: var(--gold); color: var(--bg); }
+.badge.to { background: color-mix(in srgb, var(--neg) 22%, transparent); color: var(--neg); border: 1px solid color-mix(in srgb, var(--neg) 45%, transparent); }
+.badge.big { border: 1px solid var(--line-2); color: var(--ink-2); }
+html[data-look="modern"] .badge { border-radius: 99px; padding: 2px 9px 1px; }
+html[data-look="modern"] .badge.td { color: #111; }
+
+/* play cards: a touch of life */
+.play { transition: background-color 0.25s; }
+.play:hover { background: color-mix(in srgb, var(--card) 55%, transparent); }
+html[data-look="modern"] .play { transition: border-color 0.2s, transform 0.2s; }
+html[data-look="modern"] .play:hover { background: var(--card); border-color: var(--line-2); transform: translateY(-1px); }
+html[data-look="modern"] .play.spot:hover { background: linear-gradient(115deg, color-mix(in srgb, var(--team, #2a3550) 88%, #000) 0%, color-mix(in srgb, var(--team, #2a3550) 40%, #09090b) 48%, #131317 100%); }
+.play.is-td { box-shadow: inset 3px 0 0 var(--gold); padding-left: 14px; }
+html[data-look="modern"] .play.is-td { box-shadow: inset 3px 0 0 var(--gold); padding-left: 22px; }
+.ppr.boom { position: relative; overflow: hidden; }
+.ppr.boom::after { content: ''; position: absolute; inset: 0; background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.45) 50%, transparent 70%); transform: translateX(-120%); animation: sheen 3.2s ease-in-out 0.4s infinite; }
+@keyframes sheen { 0% { transform: translateX(-120%); } 35%, 100% { transform: translateX(120%); } }
+.play.fresh { animation: arrive 0.6s ease-out; }
+@keyframes arrive { from { opacity: 0; transform: translateY(-8px); } }
+.react.on { animation: pop 0.3s ease-out; }
+@keyframes pop { 50% { transform: scale(1.18); } }
+.new-plays { box-shadow: 0 8px 24px -10px var(--gold); animation: arrive 0.4s ease-out; }
+
+/* sidebar leaders: photo + bar against the week's top score */
+.side .mini.lead { align-items: center; }
+.side .mini.lead .face, .side .mini.lead .initials { border-width: 1px; }
+.side .mini.lead .who small { margin-left: 0; display: block; margin-top: 2px; }
+.lead-bar { display: block; height: 2px; margin-top: 6px; background: var(--line); border-radius: 1px; overflow: hidden; }
+.lead-bar i { display: block; height: 100%; background: var(--gold); border-radius: 1px; }
+.side .mini.lead.first .face, .side .mini.lead.first .initials { box-shadow: 0 0 0 2px var(--gold); }
+
+@media (max-width: 720px) {
+  .live-grid { grid-template-columns: 1fr; }
+  .lc-team b { font-size: 38px; }
+  .play.is-td, html[data-look="modern"] .play.is-td { padding-left: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ppr.boom::after, .pulse, .lc-live i, .chip-game.is-live .meta .live::before, .play.fresh, .play.fresh .fb-run, .play.fresh .fb-ball, .react.on, .new-plays { animation: none; }
+}
