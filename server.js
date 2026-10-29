@@ -7,6 +7,7 @@ const nflverse = require('./src/nflverse');
 const engine = require('./src/engine');
 const sidelineAuth = require('./src/sideline-auth');
 const persist = require('./src/persist');
+const { isOffensive } = require('./src/moderation');
 
 const app = express();
 app.set('trust proxy', true); // behind Railway / Cloudflare
@@ -76,6 +77,7 @@ app.post('/api/users', (req, res) => {
   if (cfg.AUTH_MODE === 'sideline') return res.status(403).json({ error: 'Sign in with your Sideline account instead.' });
   const name = String(req.body?.name || '').trim();
   if (!/^[A-Za-z0-9_]{3,20}$/.test(name)) return res.status(400).json({ error: 'Use 3–20 letters, numbers or underscores.' });
+  if (isOffensive(name)) return res.status(400).json({ error: 'Pick a different username.' });
   if (q.userByName.get(name)) return res.status(409).json({ error: 'That username is taken.' });
   const token = crypto.randomBytes(24).toString('hex');
   q.createUser.run(name, token, cfg.START_CREDITS, Date.now());
@@ -283,6 +285,7 @@ app.post('/api/plays/:id/comments', needUser, (req, res) => {
   const body = String(req.body?.body || '').trim();
   if (!body) return res.status(400).json({ error: 'Write something first.' });
   if (body.length > 500) return res.status(400).json({ error: 'Keep comments under 500 characters.' });
+  if (isOffensive(body)) return res.status(400).json({ error: 'That comment has language that isn\'t allowed here.' });
   if (!playExists(req.params.id)) return res.status(404).json({ error: 'Play not found.' });
   if (Date.now() - (lastComment.get(req.user.id) || 0) < 3000) return res.status(429).json({ error: 'Slow down: one comment every 3 seconds.' });
   lastComment.set(req.user.id, Date.now());

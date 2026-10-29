@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const cfg = require('./config');
 const db = require('./db');
 const persist = require('./persist');
+const { isOffensive } = require('./moderation');
 
 const cache = new Map(); // sha256(cookie) -> { at, user }
 const TTL = 60e3;
@@ -27,7 +28,8 @@ function identity(profile) {
   const id = profile.id ?? profile.userId ?? profile.user_id ?? profile.uid ?? profile.username ?? profile.handle ?? profile.email;
   const name = profile.username ?? profile.handle ?? profile.displayName ?? profile.display_name ?? profile.name ?? (profile.email ? String(profile.email).split('@')[0] : null);
   if (id == null || !name) return null;
-  return { id: String(id), name: String(name).replace(/[^A-Za-z0-9_]/g, '').slice(0, 20) || 'player' };
+  const clean = String(name).replace(/[^A-Za-z0-9_]/g, '').slice(0, 20);
+  return { id: String(id), name: clean && !isOffensive(clean) ? clean : 'player' };
 }
 
 function localUserFor(ident) {
