@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en" data-look="modern">
+<head>
+  <meta charset="utf-8">
+  <script>if (!/\/$/.test(location.pathname) && !/\.[a-z]+$/i.test(location.pathname)) location.replace(location.pathname + '/' + location.search + location.hash);</script>
+  <script>
+    // Same settings as sidelineff.com's Customize panel (same storage keys), applied before the page paints
+    (function () {
+      var d = document.documentElement;
+      var A = window.SL_ACCENTS = {
+        tan: ['#c9b78a', '#7a6a43'], ember: ['#e08a4a', '#b0602a'], gold: ['#e3b341', '#9a7414'], sage: ['#8fbf9a', '#4f7a5a'],
+        forest: ['#5fae74', '#2f5d3a'], teal: ['#5cc2bb', '#1f6f6b'], ice: ['#8db8d8', '#3f6f94'], navy: ['#7c9ad1', '#26406b'],
+        crimson: ['#d9555a', '#a8383d'], rose: ['#e28aa8', '#a14a68'], slate: ['#9aa6b4', '#4c5663'], bone: ['#e9e2d2', '#3b3527']
+      };
+      var get = function (k) { try { return localStorage.getItem(k); } catch (e) { return null; } };
+      var look = get('sideline-look') || get('sl_look') || 'modern';
+      d.dataset.look = look === 'classic' || look === 'editorial' ? look : 'modern';
+      var t = get('sideline-theme');
+      if (t !== 'light' && t !== 'dark') t = window.matchMedia && matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+      d.dataset.theme = d.dataset.look === 'modern' ? 'dark' : t;
+      var ac = get('sideline-accent');
+      if (ac && A[ac]) { d.dataset.accent = ac; d.style.setProperty('--accent-d', A[ac][0]); d.style.setProperty('--accent-l', A[ac][1]); }
+      d.dataset.photos = get('sideline-photos') === 'mono' ? 'mono' : 'color';
+      d.dataset.logos = get('sideline-logos') === 'neon' ? 'neon' : 'classic';
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live plays · sideline fantasy</title>
+  <meta name="description" content="Every NFL play, live, scored in PPR. React, vote, comment, make free picks and build a weekly salary-cap lineup.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@500;800&family=Jost:wght@400;500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="hdr-inner">
+      <a class="brand" href="https://sidelineff.com/" title="Back to sideline fantasy">
+        <img class="brand-mark" src="https://sidelineff.com/sideline-mark.svg" alt="" onerror="this.remove()">
+        <span>sideline<i>Live</i></span>
+      </a>
+      <nav class="nav" aria-label="Main">
+        <a data-nav="feed" href="#/feed">Plays</a>
+        <a data-nav="picks" href="#/picks">Picks</a>
+        <a data-nav="lineups" href="#/lineups">Lineups</a>
+        <a data-nav="ranks" href="#/ranks">Ranks</a>
+        <button class="me-btn" id="meBtn" type="button"></button>
+      </nav>
+      <div class="hdr-tools">
+        <button type="button" class="icon-round theme-btn" id="themeBtn" aria-label="Switch to light mode" title="Light or dark mode">
+          <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        </button>
+        <button type="button" class="icon-round" id="customizeBtn" aria-label="Customize colors, logos and look" title="Customize">
+          <svg viewBox="0 0 24 24"><path d="M18.4 2.6a2 2 0 0 1 2.9 2.9L12 14.8 9.2 12z"/><path d="M9.2 12c-2.6-.6-5.2 1-5.2 4.2 0 1.6-1 2.6-2 3 1.5 1.4 6.8 1.8 8.6-1 1-1.6.4-3.4-1.4-4.2"/></svg>
+        </button>
+        <a class="back-link" href="https://sidelineff.com/">sidelineff.com ↗</a>
+      </div>
+    </div>
+  </header>
+
+  <div class="demo-banner" id="demoBanner" hidden>Demo mode: simulated games so you can try everything. Run <code>npm start</code> for live NFL data.</div>
+  <div class="sync" id="syncBanner" hidden></div>
+  <nav class="weeks" id="weeks" aria-label="Weeks of the season"></nav>
+  <div class="strip" id="strip" aria-label="Games this week"></div>
+
+  <div class="shell">
+    <main class="main"><div id="view" class="view"></div></main>
+    <aside class="side" id="side"></aside>
+  </div>
+
+  <div class="sheet-wrap" id="sheet" hidden>
+    <div class="sheet-scrim" data-close></div>
+    <section class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+      <header class="sheet-head"><h2 id="sheetTitle"></h2><button type="button" class="icon-btn" data-close aria-label="Close">✕</button></header>
+      <div class="sheet-body" id="sheetBody"></div>
+    </section>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>

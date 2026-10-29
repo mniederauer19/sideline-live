@@ -1,0 +1,21 @@
+{
+  "name": "sideline-live",
+  "version": "0.1.0",
+  "description": "Live NFL plays scored in PPR, with reactions, votes, comments, free picks and salary-cap lineups",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "demo": "node --watch server.js --demo",
+    "dev": "node --watch server.js"
+  },
+  "license": "UNLICENSED",
+  "dependencies": {
+    "compression": "^1.8.2",
+    "express": "^4.22.3",
+    "pg": "^8.23.1"
+  },
+  "engines": {
+    "node": ">=22.13"
+  },
+  "private": true
+}

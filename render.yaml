@@ -1,0 +1,18 @@
+# Render hosting for sideline live (free plan).
+# On render.com: New > Blueprint, pick this repository, paste your Neon DATABASE_URL, Apply.
+services:
+  - type: web
+    name: sideline-live
+    runtime: node
+    plan: free
+    region: virginia
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      # Free Neon Postgres connection string (keeps accounts, comments, picks and lineups
+      # safe; Render's free plan erases local files on every restart)
+      - key: DATABASE_URL
+        sync: false
