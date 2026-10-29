@@ -449,6 +449,27 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, demo: cfg.DEMO, week:
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
 app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
 
+// Renames accounts and removes comments that break the word filter, including ones
+// saved before the filter existed. Runs at every start.
+function cleanUpOffensive() {
+  let renamed = 0, removed = 0;
+  for (const u of db.prepare('SELECT id, name FROM users').all()) {
+    if (!isOffensive(u.name)) continue;
+    let name = `player${u.id}`;
+    for (let i = 2; db.prepare('SELECT 1 FROM users WHERE name=? AND id<>?').get(name, u.id); i++) name = `player${u.id}_${i}`;
+    db.prepare('UPDATE users SET name=? WHERE id=?').run(name, u.id);
+    persist.upsert('users', { id: u.id });
+    renamed++;
+  }
+  for (const c of db.prepare('SELECT id, body FROM comments').all()) {
+    if (!isOffensive(c.body)) continue;
+    db.prepare('DELETE FROM comments WHERE id=?').run(c.id);
+    persist.remove('comments', { id: c.id });
+    removed++;
+  }
+  if (renamed || removed) console.log(`[moderation] renamed ${renamed} account(s), removed ${removed} comment(s)`);
+}
+
 process.on('SIGTERM', async () => {
   await persist.flush().catch(() => {});
   try { db.close(); } catch { /* ignore */ }
@@ -458,6 +479,7 @@ process.on('SIGTERM', async () => {
 (async () => {
   // Bring back saved accounts, comments, picks and lineups first (when DATABASE_URL is set)
   await persist.restoreWithRetry();
+  cleanUpOffensive();
   nflverse.start();
   engine.start();
   app.listen(cfg.PORT, () => console.log(`Sideline Live on http://localhost:${cfg.PORT}${cfg.DEMO ? '  (DEMO MODE)' : ''}`));
