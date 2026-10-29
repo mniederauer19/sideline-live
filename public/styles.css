@@ -749,3 +749,8 @@ html[data-look="modern"] .play.is-td { box-shadow: inset 3px 0 0 var(--gold); pa
 @media (prefers-reduced-motion: reduce) {
   .ppr.boom::after, .pulse, .lc-live i, .chip-game.is-live .meta .live::before, .play.fresh, .play.fresh .fb-run, .play.fresh .fb-ball, .react.on, .new-plays { animation: none; }
 }
+
+/* Players tab */
+.players .nm { display: flex; align-items: center; gap: 10px; }
+.players .nm > span { display: flex; flex-direction: column; }
+.players tr.mine .nm > span::after { content: 'In your lineup'; font: var(--label-w) 9.5px/1.6 var(--label-font); letter-spacing: 1.2px; text-transform: uppercase; color: var(--gold); }

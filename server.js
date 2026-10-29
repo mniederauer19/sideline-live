@@ -185,6 +185,30 @@ app.get('/api/leaders', (req, res) => {
   res.json({ players: players.slice(0, 25) });
 });
 
+// Every player's PPR for a week (Players tab): live box scores, plus, for the current week, everyone on the
+// slate who hasn't played yet, so the list is complete before kickoff.
+app.get('/api/players', (req, res) => {
+  const week = weekOf(req), current = engine.currentWeek().week === week;
+  const out = new Map();
+  if (current) for (const p of slatePlayers()) {
+    out.set(String(p.id), { id: p.id, name: p.name, pos: p.pos, team: p.team, opp: p.opp, home: p.home, headshot: p.headshot || '',
+      ppg: p.ppg ?? null, ppr: 0, line: '', gameState: p.locked ? 'in' : 'pre', kickoff: p.kickoff || null });
+  }
+  for (const g of engine.listGames(week)) {
+    for (const t of engine.boxFor(g.id).values()) {
+      const nv = nflverse.get(t.id);
+      if (!nv && !t.name) continue;
+      const team = nv?.team || t.team, prev = out.get(String(t.id)) || {};
+      out.set(String(t.id), { ...prev, id: t.id, name: nv?.name || t.name, pos: nv?.pos || prev.pos || 'K', team,
+        headshot: nv?.headshot || t.headshot || prev.headshot || '', ppg: nv?.ppg ?? prev.ppg ?? null, ppr: t.ppr, line: t.line,
+        gameState: g.state, kickoff: prev.kickoff ?? g.start ?? null,
+        opp: prev.opp ?? (g.home.abbr === team ? g.away.abbr : g.home.abbr), home: prev.home ?? g.home.abbr === team });
+    }
+  }
+  const players = [...out.values()].sort((a, b) => b.ppr - a.ppr || (b.ppg || 0) - (a.ppg || 0));
+  res.json({ week, players });
+});
+
 // ---------- feed ----------
 const EMOJIS = ['🔥', '😂', '😭', '🤯', '💀', '👏'];
 function social(ids, userId) {

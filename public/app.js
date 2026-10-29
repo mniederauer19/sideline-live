@@ -686,6 +686,41 @@
     renderBuilder();
   }
 
+  // ---------- players ----------
+  // Every player's PPR points this week, live. Position buttons + search; your lineup players are marked.
+  S.pl = { pos: 'ALL', q: '', rows: [], at: 0 };
+  const kick = (ms) => ms ? new Date(ms).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
+  async function showPlayers() {
+    view.innerHTML = `${pageHead(weekLabel(), 'Players', 'Every player\'s PPR points<br>Updates live with each play')}
+      <div class="pills seg" id="plPos">${['ALL', 'QB', 'RB', 'WR', 'TE'].map((x) => `<button class="pill ${S.pl.pos === x ? 'on' : ''}" data-p="${x}">${x === 'ALL' ? 'All' : x}</button>`).join('')}</div>
+      <div class="pool-tools"><input id="plQ" type="search" placeholder="Search player or team" value="${esc(S.pl.q)}"></div>
+      <div id="plList"><div class="empty">Loading players…</div></div>`;
+    $('#plPos').addEventListener('click', (e) => {
+      const b = e.target.closest('[data-p]'); if (!b) return;
+      S.pl.pos = b.dataset.p; $('#plPos').querySelectorAll('.pill').forEach((x) => x.classList.toggle('on', x === b)); drawPlayers();
+    });
+    $('#plQ').addEventListener('input', (e) => { S.pl.q = e.target.value; drawPlayers(); });
+    await loadPlayers();
+  }
+  async function loadPlayers() {
+    try {
+      const r = await api(`/api/players${S.sel ? `?week=${S.sel}` : ''}`);
+      S.pl.rows = r.players || []; S.pl.at = Date.now();
+    } catch { S.pl.rows = S.pl.rows || []; }
+    drawPlayers();
+  }
+  function drawPlayers() {
+    const list = $('#plList'); if (!list) return;
+    const q = S.pl.q.trim().toLowerCase();
+    const rows = S.pl.rows.filter((p) => (S.pl.pos === 'ALL' || p.pos === S.pl.pos) && (!q || `${p.name} ${p.team}`.toLowerCase().includes(q))).slice(0, 200);
+    list.innerHTML = rows.length ? `<table class="box players"><thead><tr><th style="width:36px">#</th><th>Player</th><th class="num">Avg</th><th class="num">PPR</th></tr></thead><tbody>
+      ${rows.map((p, i) => `<tr class="${S.myLineupIds.has(String(p.id)) ? 'mine' : ''}"><td class="sub">${i + 1}</td>
+        <td><div class="nm">${face(p, 'face sm')}<span>${esc(p.name)}<span class="pos">${esc(p.pos)} · ${esc(p.team)}${p.opp ? ` ${p.home ? 'vs' : '@'} ${esc(p.opp)}` : ''}</span></span></div>
+        <div class="sub">${esc(p.line || (p.gameState === 'pre' ? (p.kickoff ? `Kicks off ${kick(p.kickoff)}` : 'Not started') : p.gameState === 'post' ? 'Final' : ''))}</div></td>
+        <td class="num sub">${p.ppg != null ? fmt(p.ppg) : '—'}</td><td class="num pp">${fmt(p.ppr || 0)}</td></tr>`).join('')}
+      </tbody></table>` : `<div class="empty">${S.pl.rows.length ? 'No players match.' : '<b>No players yet</b>They show up once this week\'s slate loads.'}</div>`;
+  }
+
   // ---------- ranks ----------
   async function showRanks() {
     const r = await api('/api/leaderboard');
@@ -974,6 +1009,7 @@
       const p = JSON.parse(e.data);
       notePlays([p]);
       renderLive();
+      if (currentRoute() === 'players' && Date.now() - S.pl.at > 8000) loadPlayers();
       if (!$('#feedList') || !matchesFeed(p)) return;
       if (S.feed.plays.some((x) => x.id === p.id)) return;
       if (window.scrollY < 300 && !S.pending.length) {
@@ -1030,6 +1066,7 @@
     else if (r === 'picks') showPicks();
     else if (r === 'lineups') showLineups();
     else if (r === 'ranks') showRanks();
+    else if (r === 'players') showPlayers();
     else { gameTab = 'plays'; showFeed(); }
     window.scrollTo({ top: 0 });
   }
