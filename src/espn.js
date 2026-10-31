@@ -7,7 +7,11 @@ async function getJSON(url) {
   return res.json();
 }
 
+// ESPN's core API posts each play ~20s before the game summary does (measured Oct 31, 2026)
+const CORE = 'https://sports.core.api.espn.com/v2/sports/football/leagues/nfl';
+
 const live = {
+  corePlays: (eventId, page, size) => getJSON(`${CORE}/events/${eventId}/competitions/${eventId}/plays?limit=${size}&page=${page}`),
   scoreboard: (params = '') => getJSON(`${SITE}/scoreboard${params}`),
   summary: (eventId) => getJSON(`${SITE}/summary?event=${eventId}`),
   // One week of the schedule. type 2 = regular season, 3 = postseason

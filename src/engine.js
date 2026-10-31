@@ -364,6 +364,10 @@ function processSummaryTx(game, summary, opts, gs) {
   }
   gs.box = totals;
   gs.boxLoaded = true;
+  // what the fast path needs to read plays between summaries
+  gs.ctx = { teamsById, index };
+  gs.accBase = acc;
+  gs.qacc = null;
 
   const firstLoad = !gs.backfilled;
   gs.backfilled = true;
@@ -386,6 +390,78 @@ function processSummaryTx(game, summary, opts, gs) {
     db.prepare('UPDATE games SET synced_at=? WHERE id=?').run(now, game.id);
   }
   return { fresh: fresh.length, updated: updated.length };
+}
+
+// ---------------- fast path: plays straight from ESPN's core API ----------------
+// The core API lists each play about 20 seconds before the game summary does, so live plays
+// are read from there first. The summary still arrives later and fills in win probability,
+// target share and official box-score totals (the card updates in place).
+const CORE_PAGE = 10;
+const refId = (o) => (o?.id != null ? String(o.id) : o?.$ref ? (String(o.$ref).match(/teams\/(\d+)/) || [])[1] : undefined);
+function normCore(p) {
+  const out = { ...p };
+  for (const k of ['start', 'end']) if (p[k]) out[k] = { ...p[k], team: p[k].team ? { id: refId(p[k].team) } : undefined };
+  if (p.team) out.team = { id: refId(p.team) };
+  return out;
+}
+const playSig = (raw) => `${raw.text || ''}|${raw.type?.text || ''}|${raw.modified || ''}|${raw.homeScore}-${raw.awayScore}|${raw.scoringPlay ? 1 : 0}|${raw.end?.yardsToEndzone}`;
+
+async function pollCore(game) {
+  const gs = getGS(game.id);
+  if (!provider.corePlays || !gs.ctx || gs.coreBusy) return;
+  gs.coreBusy = true;
+  try {
+    let page = Math.max(1, Math.ceil((gs.coreCount || 1) / CORE_PAGE));
+    let r = await provider.corePlays(game.id, page, CORE_PAGE);
+    const pages = [r];
+    if (r.pageCount > page) {
+      page = r.pageCount;
+      pages.push(await provider.corePlays(game.id, page, CORE_PAGE));
+    }
+    gs.coreCount = pages[pages.length - 1].count || gs.coreCount;
+    const items = pages.flatMap((x) => x.items || []).map(normCore)
+      .sort((a, b) => (Number(a.sequenceNumber) || 0) - (Number(b.sequenceNumber) || 0));
+    if (!gs.parsed) gs.parsed = new Map();
+    const existing = new Set(selectGamePlays.all(game.id).map((x) => x.id));
+    const fresh = [];
+    db.transaction(() => {
+      for (const raw of items) {
+        const id = String(raw.id);
+        if (existing.has(id) || gs.parsed.has(id)) continue;
+        const base = { sig: playSig(raw), play: parsePlay(raw, { gameId: game.id, ...gs.ctx, homeAbbr: game.home.abbr, awayAbbr: game.away.abbr }) };
+        gs.parsed.set(id, base);
+        if (base.play.kind === 'admin') continue;
+        if (!gs.qacc) gs.qacc = new Map([...(gs.accBase || new Map())].map(([k, v]) => [k, { ppr: v.ppr, s: { ...v.s } }]));
+        const play = structuredClone(base.play);
+        for (const p of play.players) {
+          if (!p.id) continue;
+          const a = gs.qacc.get(p.id) || { ppr: 0, s: {} };
+          a.ppr = r2(a.ppr + p.ppr);
+          for (const [k, v] of Object.entries(p.stat)) a.s[k] = (a.s[k] || 0) + v;
+          gs.qacc.set(p.id, a);
+          const nv = nflverse.get(p.id);
+          if (nv) { p.pos = p.pos || nv.pos; p.headshot = p.headshot || nv.headshot; p.season = { ppg: nv.ppg, tgtShare: nv.tgtShare, adot: nv.adot, games: nv.games }; }
+          p.gamePpr = a.ppr;
+          p.gameLine = p.pos === 'DST' ? '' : statLine(a.s);
+        }
+        if (play.epa != null) play.tags.push({ icon: play.epa >= 0 ? '📈' : '📉', text: `${play.epa >= 0 ? '+' : ''}${play.epa.toFixed(1)} EPA` });
+        play.game = { id: game.id, home: game.home.abbr, away: game.away.abbr };
+        play.ts = Date.now();
+        const data = JSON.stringify(play);
+        insertPlay.run({
+          id: play.id, game_id: game.id, seq: play.seq || 0, ts: play.ts,
+          ppr: play.ppr, scoring: play.scoring ? 1 : 0, explosive: play.explosive ? 1 : 0,
+          player_ids: `,${play.players.map((p) => p.id).filter(Boolean).join(',')},`,
+          hash: crypto.createHash('sha1').update(data).digest('hex'), data,
+        });
+        fresh.push(play);
+      }
+    })();
+    for (const p of fresh) bus.emit('play', p);
+    if (fresh.length) bus.emit('points', { gameId: game.id });
+  } catch (e) {
+    console.warn(`[engine] fast plays for ${game.id}: ${e.message}`);
+  } finally { gs.coreBusy = false; }
 }
 
 // What the scoreboard says about a game right now; when it changes, something happened
@@ -414,6 +490,7 @@ async function pollLive() {
     const startingSoon = g.state === 'pre' && g.start - now < 10 * 60e3 && g.start - now > -3 * 3600e3;
     const needsFinal = g.state === 'post' && !gs.final && !syncedAt.has(g.id);
     if (g.state === 'in') {
+      jobs.push(pollCore(g));
       // Only download the full game when the scoreboard shows a change (or every so often as a safety net)
       if (changeKey(g) !== gs.lastKey || now - (gs.lastFetch || 0) > cfg.LIVE_MAX_GAP_MS) jobs.push(pollGame(g));
     } else if (startingSoon || needsFinal) jobs.push(pollGame(g));
@@ -499,6 +576,7 @@ function start() {
 }
 
 module.exports = {
+  _pollCore: pollCore, _processSummary: processSummary,
   bus, start, listGames, games, getGS, boxFor, schedule, sync, currentWeek: () => currentWeek,
   playerGame, teamGame, gradePick, processSummary, refreshScoreboard, refreshSchedule, backfill, pollLive, pprFromStats,
 };
