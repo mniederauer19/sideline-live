@@ -8,6 +8,8 @@ module.exports = {
   // How often each LIVE game is re-checked for new plays (ms).
   // ESPN updates roughly every few seconds; 3000 is a good balance.
   LIVE_POLL_MS: num(process.env.LIVE_POLL_MS, 2000),
+  // How often live games are checked for brand-new plays (ms)
+  FAST_POLL_MS: num(process.env.FAST_POLL_MS, 1000),
   // While games are live: how often the scoreboard is checked for changes (ms), and the
   // longest a live game goes without a full refresh even if nothing seems to change (ms).
   LIVE_SCOREBOARD_MS: num(process.env.LIVE_SCOREBOARD_MS, 2000),

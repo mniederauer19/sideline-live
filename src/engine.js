@@ -507,7 +507,6 @@ async function pollLive() {
     const startingSoon = g.state === 'pre' && g.start - now < 10 * 60e3 && g.start - now > -3 * 3600e3;
     const needsFinal = g.state === 'post' && !gs.final && !syncedAt.has(g.id);
     if (g.state === 'in') {
-      jobs.push(pollCore(g));
       // Only download the full game when the scoreboard shows a change (or every so often as a safety net)
       if (changeKey(g) !== gs.lastKey || now - (gs.lastFetch || 0) > (g.extra ? 10000 : cfg.LIVE_MAX_GAP_MS)) jobs.push(pollGame(g));
     } else if (startingSoon || needsFinal) jobs.push(pollGame(g));
@@ -619,6 +618,8 @@ function start() {
   }
   loop(refreshScoreboard, () => (listGames().some((g) => g.state === 'in') ? cfg.LIVE_SCOREBOARD_MS : cfg.SCOREBOARD_POLL_MS), 'scoreboard');
   setTimeout(() => loop(pollLive, cfg.LIVE_POLL_MS, 'live'), 1500);
+  // New plays: checked every second on their own loop, so a slow summary download never holds them up
+  setTimeout(() => loop(() => Promise.all(listGames().filter((g) => g.state === 'in').map(pollCore)), cfg.FAST_POLL_MS, 'fast'), 2000);
   if (!cfg.DEMO) setTimeout(() => loop(refreshExtras, 60e3, 'extras'), 4000);
   // Full season: schedule now and every 6 hours, then store all finished games
   if (!cfg.DEMO) {

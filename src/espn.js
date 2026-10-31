@@ -15,7 +15,7 @@ const siteFor = (league) => (league && league !== 'nfl' ? SITE.replace('/nfl', `
 const coreFor = (league) => (league && league !== 'nfl' ? CORE.replace('/nfl', `/${league}`) : CORE);
 
 const live = {
-  corePlays: (eventId, page, size, league) => getJSON(`${coreFor(league)}/events/${eventId}/competitions/${eventId}/plays?limit=${size}&page=${page}`),
+  corePlays: (eventId, page, size, league) => getJSON(`${coreFor(league)}/events/${eventId}/competitions/${eventId}/plays?limit=${size}&page=${page}&_=${Date.now()}`),
   scoreboard: (params = '') => getJSON(`${SITE}/scoreboard${params}`),
   summary: (eventId, league) => getJSON(`${siteFor(league)}/summary?event=${eventId}`),
   // One week of the schedule. type 2 = regular season, 3 = postseason
