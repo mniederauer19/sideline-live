@@ -129,9 +129,15 @@ async function backfill() {
   console.log(`[backfill] storing plays for ${todo.length} finished games...`);
   bus.emit('sync', { ...sync });
   const queue = [...todo];
-  const worker = async () => {
+  // While games are live, past games load slowly in the background (one at a time, with
+  // pauses) so the small server keeps every live play fast.
+  const liveNow = () => [...games.values()].some((x) => x.state === 'in');
+  const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+  const worker = async (n) => {
     while (queue.length) {
+      if (liveNow()) { if (n > 0) { await pause(5000); continue; } await pause(1500); }
       const g = queue.shift();
+      if (!g) break;
       const gs = getGS(g.id);
       if (gs.busy) continue;
       gs.busy = true;
@@ -146,7 +152,7 @@ async function backfill() {
       if (sync.done % 4 === 0 || sync.done === sync.total) bus.emit('sync', { ...sync });
     }
   };
-  await Promise.all([worker(), worker(), worker(), worker()]);
+  await Promise.all([worker(0), worker(1), worker(2), worker(3)]);
   sync.running = false;
   console.log(`[backfill] done: ${sync.done - sync.failed} games stored${sync.failed ? `, ${sync.failed} failed (will retry)` : ''}`);
   bus.emit('sync', { ...sync });
