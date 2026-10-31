@@ -416,7 +416,11 @@ function parsePlay(raw, ctx) {
   if (fm && !out.nullified && out.kind !== 'int') {
     // Fumbler: named right before "FUMBLES", else the returner on kicks, else the ball carrier
     const named = main.match(RX.fumbler);
-    const carrier = [...players.values()].find((p) => ['rusher', 'receiver'].includes(p.role) && p.team === offense)
+    // After a lateral, the ball carrier is whoever caught the last lateral before the fumble
+    const latBefore = [...main.matchAll(RX.lateral)].filter((lm) => lm.index < fumIdx).pop();
+    const latP = latBefore && who(latBefore[1], [offense]);
+    const latCarrier = latP && [...players.values()].find((p) => (latP.id ? p.id === latP.id : p.short === latBefore[1]) && ['rusher', 'receiver'].includes(p.role));
+    const carrier = latCarrier || [...players.values()].find((p) => ['rusher', 'receiver'].includes(p.role) && p.team === offense)
       || [...players.values()].find((p) => p.role === 'passer');
     let fumbler, fumblerTok, fumblerTeam;
     if (named) { fumbler = who(named[1], [offense, defense]); fumblerTok = named[1]; }

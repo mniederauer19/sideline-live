@@ -19,6 +19,7 @@ const provider = cfg.DEMO ? require('./demo') : espn.live;
 const games = new Map();      // gameId -> normalized game
 const gameState = new Map();  // gameId -> { box, acc, final, backfilled, busy }
 let currentWeek = { season: cfg.SEASON, week: null };
+const reread = new Set();     // this week's finals re-read since the server started
 const syncedAt = new Map();   // gameId -> when its finished plays were last stored
 const sync = { running: false, total: 0, done: 0, failed: 0, scheduleLoaded: false };
 
@@ -122,6 +123,8 @@ async function backfill() {
     if (g.state !== 'post') return false;
     const at = syncedAt.get(g.id);
     if (!at) return true;
+    // After a restart (a new version), re-read this week's finished games once so scoring fixes apply to them
+    if (g.week === currentWeek.week && g.season === currentWeek.season && !reread.has(g.id)) return true;
     return at - (g.start || 0) < 48 * 3600e3 && now - at > 12 * 3600e3;
   }).sort((a, b) => b.start - a.start); // newest first
   if (!todo.length) return;
@@ -144,6 +147,7 @@ async function backfill() {
       try {
         const summary = await provider.summary(g.id);
         processSummary(games.get(g.id) || g, summary, { quiet: true });
+        reread.add(g.id);
       } catch (e) {
         sync.failed++;
         console.warn(`[backfill] ${g.name}: ${e.message}`);
