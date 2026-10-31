@@ -540,4 +540,28 @@ function parsePlay(raw, ctx) {
   return out;
 }
 
-module.exports = { parsePlay, rosterIndex, lookup, lookupFull, canonTeam, RX, N };
+// College play text is written a little differently from NFL text, e.g.
+// "(07:20) Shotgun #8 J.Gutierrez rush middle for 0 yards to the NotreD21".
+// Rewrite it into the NFL wording the patterns above already understand.
+function collegeText(text) {
+  let t = String(text || '');
+  t = t.replace(/^\(\d{1,2}:\d{2}\)\s*/, '');                       // leading clock
+  t = t.replace(/#\d{1,2}\s+(?=[A-Z])/g, '');                          // jersey numbers
+  t = t.replace(new RegExp(`(${N}) rush (left|middle|right)`, 'g'), (m, who, dir) => `${who} ${dir === 'middle' ? 'up the middle' : `${dir} end`}`);
+  t = t.replace(new RegExp(`(${N}) rush\\b`, 'g'), '$1 rushes');
+  t = t.replace(/ pass complete /g, ' pass ');
+  t = t.replace(/ pass complete$/g, ' pass');
+  t = t.replace(/ pass intercepted /gi, ' pass INTERCEPTED ');
+  t = t.replace(/ (?:yards?|yd) gain\b/g, (m) => m.replace(/ gain$/, ''));
+  t = t.replace(/ for a (\d+) yard loss/g, ' for a loss of $1 yards');
+  t = t.replace(new RegExp(`(${N}) field goal attempt from (\\d+) yards? (GOOD|MISSED|BLOCKED|NO GOOD)`, 'i'),
+    (m, who, yds, res) => `${who} ${yds} yard field goal is ${/good/i.test(res) && !/no/i.test(res) ? 'GOOD' : /block/i.test(res) ? 'BLOCKED' : 'No Good'}`);
+  t = t.replace(new RegExp(`(${N}) (?:extra point|PAT|kick attempt|KICK)(?: attempt)? (GOOD|good|MISSED|missed|NO GOOD|no good|BLOCKED|blocked)`),
+    (m, who, res) => `${who} extra point is ${/^good$/i.test(res) ? 'GOOD' : /block/i.test(res) ? 'BLOCKED' : 'No Good'}`);
+  t = t.replace(/ fumbled,? recovered by ([A-Z]{2,4})/gi, ' FUMBLES, RECOVERED by $1-');
+  t = t.replace(/ for a TD\b/gi, ', TOUCHDOWN');
+  t = t.replace(/(\d+) yds\b/g, '$1 yards').replace(/(\d+) yd\b/g, '$1 yard');
+  return t;
+}
+
+module.exports = { parsePlay, rosterIndex, lookup, lookupFull, canonTeam, collegeText, RX, N };

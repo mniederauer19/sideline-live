@@ -785,6 +785,9 @@
   // ---------- score alerts for your players ----------
   function alertFor(p) {
     if (!S.alerts || !S.myFantasyIds.size) return;
+    if (!S.alerted) S.alerted = new Set();
+    if (S.alerted.has(p.id)) return;
+    S.alerted.add(p.id);
     const x = p.players?.find((y) => S.myFantasyIds.has(String(y.id)));
     if (!x) return;
     const v = adj(x);

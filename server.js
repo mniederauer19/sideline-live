@@ -178,7 +178,7 @@ app.get('/api/leaders', (req, res) => {
     for (const t of engine.boxFor(g.id).values()) {
       const nv = nflverse.get(t.id);
       if (!nv && !t.name) continue;
-      players.push({ id: t.id, name: nv?.name || t.name, pos: nv?.pos || 'K', team: nv?.team || t.team, ppr: t.ppr, line: t.line, gameState: g.state, headshot: nv?.headshot || t.headshot || '' });
+      players.push({ id: t.id, name: nv?.name || t.name, pos: nv?.pos || (g.extra ? '' : 'K'), team: nv?.team || t.team, ppr: t.ppr, line: t.line, gameState: g.state, headshot: nv?.headshot || t.headshot || '' });
     }
   }
   players.sort((a, b) => b.ppr - a.ppr);
@@ -199,7 +199,7 @@ app.get('/api/players', (req, res) => {
       const nv = nflverse.get(t.id);
       if (!nv && !t.name) continue;
       const team = nv?.team || t.team, prev = out.get(String(t.id)) || {};
-      out.set(String(t.id), { ...prev, id: t.id, name: nv?.name || t.name, pos: nv?.pos || prev.pos || 'K', team,
+      out.set(String(t.id), { ...prev, id: t.id, name: nv?.name || t.name, pos: nv?.pos || prev.pos || (g.extra ? '' : 'K'), team,
         headshot: nv?.headshot || t.headshot || prev.headshot || '', ppg: nv?.ppg ?? prev.ppg ?? null, ppr: t.ppr, line: t.line, s: t.s || {},
         gameState: g.state, kickoff: prev.kickoff ?? g.start ?? null,
         opp: prev.opp ?? (g.home.abbr === team ? g.away.abbr : g.home.abbr), home: prev.home ?? g.home.abbr === team });

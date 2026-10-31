@@ -7,7 +7,9 @@ const db = require('./db');
 const persist = require('./persist');
 const espn = require('./espn');
 const nflverse = require('./nflverse');
-const { parsePlay, rosterIndex } = require('./parse');
+const { parsePlay, rosterIndex, collegeText } = require('./parse');
+const fs = require('fs');
+const path = require('path');
 
 const bus = new EventEmitter();
 bus.setMaxListeners(0);
@@ -232,6 +234,7 @@ function processSummaryTx(game, summary, opts, gs) {
     const g2 = espn.normalizeEvent(ev);
     const pc = espn.normalizeOdds(summary.pickcenter?.[0]);
     const defined = Object.fromEntries(Object.entries(g2).filter(([, v]) => v !== undefined && v !== null && v !== '' && !(typeof v === 'number' && isNaN(v))));
+    if (game.extra) { delete defined.week; delete defined.season; }
     game = saveGame({ ...game, ...defined, name: game.name || `${g2.away.abbr} @ ${g2.home.abbr}`,
       home: { ...game.home, ...g2.home, logo: g2.home.logo || game.home?.logo, record: g2.home.record || game.home?.record },
       away: { ...game.away, ...g2.away, logo: g2.away.logo || game.away?.logo, record: g2.away.record || game.away?.record },
@@ -287,7 +290,7 @@ function processSummaryTx(game, summary, opts, gs) {
     let base = gs.parsed.get(id);
     const changed = !base || base.sig !== sig;
     if (changed) {
-      base = { sig, play: parsePlay(raw, { gameId: game.id, teamsById, homeAbbr: game.home.abbr, awayAbbr: game.away.abbr, index }) };
+      base = { sig, play: parsePlay(textFor(game, raw), { gameId: game.id, teamsById, homeAbbr: game.home.abbr, awayAbbr: game.away.abbr, index }) };
       gs.parsed.set(id, base);
       dirty = true;
     }
@@ -346,7 +349,17 @@ function processSummaryTx(game, summary, opts, gs) {
     (prev ? updated : fresh).push(play);
   });
 
-  for (const id of existing.keys()) if (!keep.has(id)) deletePlay.run(id);
+  // Remove plays ESPN took back, but not ones the fast path added that the summary hasn't reached yet
+  const maxSeq = raws.reduce((m, r) => Math.max(m, Number(r.sequenceNumber) || 0), 0);
+  if (!gs.quick) gs.quick = new Map();
+  for (const id of keep) gs.quick.delete(id);
+  for (const id of existing.keys()) {
+    if (keep.has(id)) continue;
+    const q = gs.quick.get(id);
+    if (q != null && q > maxSeq) { keep.add(id); continue; }
+    gs.quick.delete(id);
+    deletePlay.run(id);
+  }
 
   // Player fantasy totals for lineups: box score is official; per-play adds kickers/2-pt
   const totals = new Map();
@@ -404,6 +417,8 @@ function normCore(p) {
   if (p.team) out.team = { id: refId(p.team) };
   return out;
 }
+// College play text gets rewritten into NFL wording before parsing
+const textFor = (game, raw) => (game.league && game.league !== 'nfl' ? { ...raw, text: collegeText(raw.text) } : raw);
 const playSig = (raw) => `${raw.text || ''}|${raw.type?.text || ''}|${raw.modified || ''}|${raw.homeScore}-${raw.awayScore}|${raw.scoringPlay ? 1 : 0}|${raw.end?.yardsToEndzone}`;
 
 async function pollCore(game) {
@@ -412,11 +427,11 @@ async function pollCore(game) {
   gs.coreBusy = true;
   try {
     let page = Math.max(1, Math.ceil((gs.coreCount || 1) / CORE_PAGE));
-    let r = await provider.corePlays(game.id, page, CORE_PAGE);
+    let r = await provider.corePlays(game.id, page, CORE_PAGE, game.league);
     const pages = [r];
     if (r.pageCount > page) {
       page = r.pageCount;
-      pages.push(await provider.corePlays(game.id, page, CORE_PAGE));
+      pages.push(await provider.corePlays(game.id, page, CORE_PAGE, game.league));
     }
     gs.coreCount = pages[pages.length - 1].count || gs.coreCount;
     const items = pages.flatMap((x) => x.items || []).map(normCore)
@@ -428,7 +443,7 @@ async function pollCore(game) {
       for (const raw of items) {
         const id = String(raw.id);
         if (existing.has(id) || gs.parsed.has(id)) continue;
-        const base = { sig: playSig(raw), play: parsePlay(raw, { gameId: game.id, ...gs.ctx, homeAbbr: game.home.abbr, awayAbbr: game.away.abbr }) };
+        const base = { sig: playSig(raw), play: parsePlay(textFor(game, raw), { gameId: game.id, ...gs.ctx, homeAbbr: game.home.abbr, awayAbbr: game.away.abbr }) };
         gs.parsed.set(id, base);
         if (base.play.kind === 'admin') continue;
         if (!gs.qacc) gs.qacc = new Map([...(gs.accBase || new Map())].map(([k, v]) => [k, { ppr: v.ppr, s: { ...v.s } }]));
@@ -454,6 +469,8 @@ async function pollCore(game) {
           player_ids: `,${play.players.map((p) => p.id).filter(Boolean).join(',')},`,
           hash: crypto.createHash('sha1').update(data).digest('hex'), data,
         });
+        if (!gs.quick) gs.quick = new Map();
+        gs.quick.set(play.id, Number(raw.sequenceNumber) || 0);
         fresh.push(play);
       }
     })();
@@ -473,7 +490,7 @@ async function pollGame(game) {
   gs.busy = true;
   const key = changeKey(game);
   try {
-    const summary = await provider.summary(game.id);
+    const summary = await provider.summary(game.id, game.league);
     processSummary(game, summary);
     gs.lastKey = key;
     gs.lastFetch = Date.now();
@@ -492,7 +509,7 @@ async function pollLive() {
     if (g.state === 'in') {
       jobs.push(pollCore(g));
       // Only download the full game when the scoreboard shows a change (or every so often as a safety net)
-      if (changeKey(g) !== gs.lastKey || now - (gs.lastFetch || 0) > cfg.LIVE_MAX_GAP_MS) jobs.push(pollGame(g));
+      if (changeKey(g) !== gs.lastKey || now - (gs.lastFetch || 0) > (g.extra ? 10000 : cfg.LIVE_MAX_GAP_MS)) jobs.push(pollGame(g));
     } else if (startingSoon || needsFinal) jobs.push(pollGame(g));
   }
   await Promise.all(jobs);
@@ -554,15 +571,42 @@ async function loop(fn, ms, name) {
   tick();
 }
 
+// ---------------- extra games (e.g. one college game for a day) ----------------
+// extra-games.json: [{ "league": "college-football", "id": "401859185", "until": "2026-11-01T03:00:00Z" }]
+function extraList() {
+  try { return JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'extra-games.json'), 'utf8')); } catch { return []; }
+}
+async function refreshExtras() {
+  const now = Date.now();
+  for (const x of extraList()) {
+    const until = Date.parse(x.until || '') || 0;
+    if (now > until) { if (games.has(String(x.id))) games.delete(String(x.id)); continue; }
+    if (games.has(String(x.id))) continue;
+    try {
+      const summary = await provider.summary(x.id, x.league);
+      const hc = summary.header?.competitions?.[0];
+      if (!hc) continue;
+      const g = espn.normalizeEvent({ id: String(x.id), competitions: [hc], status: hc.status, season: summary.header.season, week: summary.header.week, date: hc.date });
+      Object.assign(g, { league: x.league, extra: true, until, week: currentWeek.week, season: currentWeek.season });
+      saveGame(g);
+      processSummary(g, summary, { quiet: true });
+      bus.emit('games', listGames());
+      console.log(`[engine] added ${x.league} game ${g.name || x.id} for today`);
+    } catch (e) { console.warn(`[engine] extra game ${x.id}: ${e.message}`); }
+  }
+}
+
 function start() {
   // restore games from db so the site works immediately after a restart
   for (const r of db.prepare('SELECT data, synced_at FROM games').all()) {
     const g = JSON.parse(r.data);
+    if (g.extra && !(Date.now() < (g.until || 0))) continue; // a one-day extra game that's over
     games.set(g.id, g);
     if (r.synced_at) syncedAt.set(g.id, r.synced_at);
   }
   loop(refreshScoreboard, () => (listGames().some((g) => g.state === 'in') ? cfg.LIVE_SCOREBOARD_MS : cfg.SCOREBOARD_POLL_MS), 'scoreboard');
   setTimeout(() => loop(pollLive, cfg.LIVE_POLL_MS, 'live'), 1500);
+  if (!cfg.DEMO) setTimeout(() => loop(refreshExtras, 60e3, 'extras'), 4000);
   // Full season: schedule now and every 6 hours, then store all finished games
   if (!cfg.DEMO) {
     const season = async () => {

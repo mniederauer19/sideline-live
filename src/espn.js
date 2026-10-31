@@ -10,10 +10,14 @@ async function getJSON(url) {
 // ESPN's core API posts each play ~20s before the game summary does (measured Oct 31, 2026)
 const CORE = 'https://sports.core.api.espn.com/v2/sports/football/leagues/nfl';
 
+// Other leagues (e.g. one college game added for a day) use the same endpoints
+const siteFor = (league) => (league && league !== 'nfl' ? SITE.replace('/nfl', `/${league}`) : SITE);
+const coreFor = (league) => (league && league !== 'nfl' ? CORE.replace('/nfl', `/${league}`) : CORE);
+
 const live = {
-  corePlays: (eventId, page, size) => getJSON(`${CORE}/events/${eventId}/competitions/${eventId}/plays?limit=${size}&page=${page}`),
+  corePlays: (eventId, page, size, league) => getJSON(`${coreFor(league)}/events/${eventId}/competitions/${eventId}/plays?limit=${size}&page=${page}`),
   scoreboard: (params = '') => getJSON(`${SITE}/scoreboard${params}`),
-  summary: (eventId) => getJSON(`${SITE}/summary?event=${eventId}`),
+  summary: (eventId, league) => getJSON(`${siteFor(league)}/summary?event=${eventId}`),
   // One week of the schedule. type 2 = regular season, 3 = postseason
   week: (season, type, week) => getJSON(`${SITE}/scoreboard?dates=${season}&seasontype=${type}&week=${week}`),
 };
