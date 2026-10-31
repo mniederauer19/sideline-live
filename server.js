@@ -568,6 +568,7 @@ window.__parse=req('parse');})();`);
 app.get('/api/health', (_req, res) => res.json({ ok: true, demo: cfg.DEMO, week: engine.currentWeek(), games: engine.listGames().length, seasonGames: engine.games.size,
   plays: db.prepare('SELECT COUNT(*) n FROM plays').get().n, sync: engine.sync,
   sidelineLogin: { status: sidelineAuth.state.lastStatus, error: sidelineAuth.state.lastError },
+  tradeValues: { players: tradeValues.state.players.size, asOf: tradeValues.state.asOf, error: tradeValues.state.error },
   saved: persist.enabled ? { restored: persist.state.restored, pending: persist.state.pending, failed: persist.state.failed } : null, players: nflverse.state.byEspn.size, clients: clients.size }));
 
 // The page itself. When another site serves this app under a path (sidelineff.com/live)

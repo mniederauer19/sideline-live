@@ -40,9 +40,10 @@ function use(data) {
 
 async function download() {
   const base = cfg.SIDELINE_URL;
-  const home = await fetch(base + '/', { headers: { 'user-agent': 'sideline-live' }, signal: AbortSignal.timeout(15000) }).then((r) => r.text());
+  const res = await fetch(base + '/', { headers: { 'user-agent': 'Mozilla/5.0 (compatible; sideline-live)', accept: 'text/html' }, signal: AbortSignal.timeout(15000) });
+  const home = await res.text();
   const idx = (home.match(/src="([^"]*\/index-[^"]+\.js)"/) || [])[1];
-  if (!idx) throw new Error('main page script not found');
+  if (!idx) throw new Error(`main page script not found (status ${res.status}, ${home.length} bytes: ${home.slice(0, 80).replace(/\s+/g, ' ')})`);
   const index = await fetch(new URL(idx, base).href, { signal: AbortSignal.timeout(15000) }).then((r) => r.text());
   const chunk = (index.match(/_next\/static\/chunks\/boone-values-[A-Za-z0-9_-]+\.js/) || [])[0];
   if (!chunk) throw new Error('trade values file not found');
