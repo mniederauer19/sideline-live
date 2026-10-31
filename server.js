@@ -469,9 +469,26 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, demo: cfg.DEMO, week:
   plays: db.prepare('SELECT COUNT(*) n FROM plays').get().n, sync: engine.sync,
   saved: persist.enabled ? { restored: persist.state.restored, pending: persist.state.pending, failed: persist.state.failed } : null, players: nflverse.state.byEspn.size, clients: clients.size }));
 
+// The page itself. When another site serves this app under a path (sidelineff.com/live)
+// through a proxy that sends "X-Forwarded-Prefix: /live", the page's file and API links
+// are pointed at that path, so it works with or without a trailing slash.
+const INDEX_FILE = path.join(__dirname, 'public', 'index.html');
+function sendIndex(req, res) {
+  const prefix = String(req.headers['x-forwarded-prefix'] || '').replace(/\/+$/, '');
+  res.setHeader('Cache-Control', 'no-cache');
+  if (!prefix || !/^\/[A-Za-z0-9/_-]{1,60}$/.test(prefix)) return res.sendFile(INDEX_FILE);
+  let html = require('fs').readFileSync(INDEX_FILE, 'utf8');
+  html = html
+    .replace('<head>', `<head>\n  <script>window.SIDELINE_API = ${JSON.stringify(prefix)};</script>`)
+    .replace('href="styles.css"', `href="${prefix}/styles.css"`)
+    .replace('src="app.js"', `src="${prefix}/app.js"`);
+  res.type('html').send(html);
+}
+app.get(['/', '/index.html'], sendIndex);
+
 // Browsers re-check page files each visit (cheap 304s), so updates show up right away
 app.use(express.static(path.join(__dirname, 'public'), { extensions: ['html'], setHeaders: (res) => res.setHeader('Cache-Control', 'no-cache') }));
-app.get(/^\/(?!api\/).*/, (_req, res) => res.sendFile(path.join(__dirname, 'public', 'index.html')));
+app.get(/^\/(?!api\/).*/, sendIndex);
 
 // Renames accounts and removes comments that break the word filter, including ones
 // saved before the filter existed. Runs at every start.

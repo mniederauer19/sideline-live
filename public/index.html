@@ -2,7 +2,7 @@
 <html lang="en" data-look="modern">
 <head>
   <meta charset="utf-8">
-  <script>if (!/\/$/.test(location.pathname) && !/\.[a-z]+$/i.test(location.pathname)) location.replace(location.pathname + '/' + location.search + location.hash);</script>
+  <script>if (window.SIDELINE_API == null && !/\/$/.test(location.pathname) && !/\.[a-z]+$/i.test(location.pathname)) location.replace(location.pathname + '/' + location.search + location.hash);</script>
   <script>
     // Same settings as sidelineff.com's Customize panel (same storage keys), applied before the page paints
     (function () {
