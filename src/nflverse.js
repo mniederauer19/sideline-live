@@ -20,6 +20,7 @@ const state = {
   loading: null,
   kickers: new Map(),
   byEspn: new Map(), // espnId -> player profile with season stats + salary
+  kickerSeason: new Map(), // espnId -> kicker profile with season fantasy points (kept apart from the lineup pool)
   loadedAt: 0,
 };
 
@@ -164,6 +165,24 @@ async function load() {
       salary: salaryFor(a.pos, ppg, last3Ppg),
     });
   }
+  // Kickers: season points scored the same way as live plays (FG 3 / 4 at 40+ / 5 at 50+, XP 1, misses -1)
+  const kAgg = new Map();
+  for (const r of weekly) {
+    if (r.position !== 'K') continue;
+    const espnId = gsisToEspn.get(r.player_id); if (!espnId) continue;
+    const pts = 3 * (n(r.fg_made_0_19) + n(r.fg_made_20_29) + n(r.fg_made_30_39)) + 4 * n(r.fg_made_40_49) + 5 * (n(r.fg_made_50_59) + n(r.fg_made_60_))
+      + n(r.pat_made) - n(r.fg_missed) - n(r.pat_missed);
+    let k = kAgg.get(espnId);
+    if (!k) { k = { id: espnId, gsis: r.player_id, name: r.player_display_name, pos: 'K', team: fixTeam(r.team), headshot: r.headshot_url || '', weeks: [], lastWeek: 0, snaps: [] }; kAgg.set(espnId, k); }
+    const wk = Number(r.week);
+    k.weeks.push({ week: wk, ppr: pts, rec: 0, fgm: n(r.fg_made), fga: n(r.fg_att), xpm: n(r.pat_made) });
+    if (wk >= k.lastWeek) { k.lastWeek = wk; k.team = fixTeam(r.team); k.headshot = r.headshot_url || k.headshot; }
+  }
+  for (const k of kAgg.values()) {
+    k.weeks.sort((a, b) => a.week - b.week); k.games = k.weeks.length;
+    k.ppg = +(k.weeks.reduce((a, w) => a + w.ppr, 0) / (k.games || 1)).toFixed(1);
+  }
+  state.kickerSeason = kAgg;
   state.byEspn = byEspn;
   state.kickers = kickers;
   state.ready = true;
@@ -180,5 +199,7 @@ module.exports = {
   start, load, state, fixTeam,
   get: (espnId) => state.byEspn.get(String(espnId)),
   byTeam: (team) => [...state.byEspn.values()].filter((p) => p.team === team),
+  kickersByTeam: (team) => [...state.kickerSeason.values()].filter((p) => p.team === team),
+  kicker: (espnId) => state.kickerSeason.get(String(espnId)),
   all: () => [...state.byEspn.values()],
 };

@@ -238,7 +238,7 @@ app.get('/api/teams/:abbr', (req, res) => {
   const g = engine.listGames(week).find((x) => x.home.abbr === abbr || x.away.abbr === abbr) || null;
   const team = g ? (g.home.abbr === abbr ? g.home : g.away) : null;
   const out = new Map();
-  if (!g?.extra) for (const p of nflverse.byTeam(abbr)) {
+  if (!g?.extra) for (const p of [...nflverse.byTeam(abbr), ...nflverse.kickersByTeam(abbr)]) {
     const done = p.weeks.filter((w) => w.week < week);
     out.set(String(p.id), { id: p.id, name: p.name, pos: p.pos, team: abbr, headshot: p.headshot || '', ppr: 0, line: '', s: {},
       // Season so far, before the week being shown (that week's points come from the live box score).
@@ -247,7 +247,7 @@ app.get('/api/teams/:abbr', (req, res) => {
   }
   if (g) for (const t of engine.boxFor(g.id).values()) {
     if (t.team !== abbr && nflverse.get(t.id)?.team !== abbr) continue;
-    const nv = nflverse.get(t.id), prev = out.get(String(t.id)) || { games: 0, seasonPpr: 0, seasonRec: 0 };
+    const nv = nflverse.get(t.id) || nflverse.kicker(t.id), prev = out.get(String(t.id)) || { games: 0, seasonPpr: 0, seasonRec: 0 };
     if (!nv && !t.name) continue;
     if ((!posOf(nv, t) && !hasFantasy(t)) || /^\s*team\s*$/i.test(t.name || '')) continue;
     out.set(String(t.id), { ...prev, id: t.id, name: nv?.name || t.name, pos: posOf(nv, t) || prev.pos || '', team: abbr,
