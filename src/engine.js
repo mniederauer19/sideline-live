@@ -581,7 +581,20 @@ async function refreshExtras() {
   for (const x of extraList()) {
     const until = Date.parse(x.until || '') || 0;
     if (now > until) { if (games.has(String(x.id))) games.delete(String(x.id)); continue; }
-    if (games.has(String(x.id))) continue;
+    const have = games.get(String(x.id));
+    if (have) {
+      // Once it's final, keep it up 30 more minutes, then take it off the site
+      if (have.state === 'post') {
+        if (!have.finalAt) saveGame({ ...have, finalAt: now });
+        else if (now - have.finalAt > 30 * 60e3) {
+          saveGame({ ...have, until: now });
+          games.delete(have.id);
+          bus.emit('games', listGames());
+          console.log(`[engine] removed finished extra game ${have.name || have.id}`);
+        }
+      }
+      continue;
+    }
     try {
       const summary = await provider.summary(x.id, x.league);
       const hc = summary.header?.competitions?.[0];
@@ -600,7 +613,7 @@ function start() {
   // restore games from db so the site works immediately after a restart
   for (const r of db.prepare('SELECT data, synced_at FROM games').all()) {
     const g = JSON.parse(r.data);
-    if (g.extra && !(Date.now() < (g.until || 0))) continue; // a one-day extra game that's over
+    if (g.extra && (!(Date.now() < (g.until || 0)) || (g.finalAt && Date.now() - g.finalAt > 30 * 60e3))) continue; // an extra game that's over
     games.set(g.id, g);
     if (r.synced_at) syncedAt.set(g.id, r.synced_at);
   }
@@ -620,7 +633,7 @@ function start() {
 }
 
 module.exports = {
-  _pollCore: pollCore, _processSummary: processSummary,
+  _pollCore: pollCore, _processSummary: processSummary, _refreshExtras: refreshExtras,
   bus, start, listGames, games, getGS, boxFor, schedule, sync, currentWeek: () => currentWeek,
   playerGame, teamGame, gradePick, processSummary, refreshScoreboard, refreshSchedule, backfill, pollLive, pprFromStats,
 };
