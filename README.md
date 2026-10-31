@@ -6,7 +6,6 @@ Every NFL play, the moment it happens, scored in standard PPR. People can vote o
 
 - **Plays:** every NFL play the moment ESPN posts it, with fantasy points, a mini field showing where the play started and ended, and badges for touchdowns, turnovers and big plays. Tap a player's name to see every play they've had this week with a running total.
 - **Scoring formats:** switch between full PPR, half PPR and standard; every number on the site follows.
-- **My team:** type a Sleeper username, pick a league, and see your real matchup live (your league's own scoring), your bench, injury tags, a feed of only your players, and an alert when one of them scores or turns it over.
 - **Players:** everyone's points this week, live (built by Mika).
 - **Picks, Lineups, Ranks:** free picks against the Vegas lines, weekly salary-cap lineups, and the credits leaderboard.
 

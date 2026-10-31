@@ -7,7 +7,7 @@
   // If the page is served from a different host than the API, set window.SIDELINE_API.
   const API = (window.SIDELINE_API ?? new URL('.', location.href).pathname).replace(/\/$/, '');
   const EMOJIS = ['🔥', '😂', '😭', '🤯', '💀', '👏'];
-  const FILTERS = [['all', 'All'], ['team', 'My fantasy team'], ['scoring', 'Scoring'], ['ppr5', '5+ PPR'], ['ppr10', '10+ PPR'], ['big', 'Big plays'], ['mine', 'My lineup']];
+  const FILTERS = [['all', 'All'], ['scoring', 'Scoring'], ['ppr5', '5+ PPR'], ['ppr10', '10+ PPR'], ['big', 'Big plays'], ['mine', 'My lineup']];
 
   const S = {
     token: (() => { try { return localStorage.getItem('sl_token'); } catch { return null; } })(),
@@ -69,10 +69,10 @@
     return `<span class="fmt-seg" role="radiogroup" aria-label="Scoring">${Object.entries(FORMATS).map(([k, f]) => `<button type="button" class="${S.fmt === k ? 'on' : ''}" data-act="fmt" data-v="${k}" role="radio" aria-checked="${S.fmt === k}" title="${f.name}">${f.label}</button>`).join('')}</span>`;
   }
 
-  // ---------- your real fantasy team (Sleeper) ----------
-  S.sl = (() => { try { return JSON.parse(ls.get('sl-sleeper') || 'null'); } catch { return null; } })();
-  S.myFantasyIds = new Set((() => { try { return JSON.parse(ls.get('sl-sleeper-ids') || '[]'); } catch { return []; } })());
+  // ---------- your fantasy team (filled from your sidelineff.com leagues once connected) ----------
+  S.myFantasyIds = new Set();
   S.alerts = ls.get('sl-alerts') === '1';
+  ls.set('sl-sleeper', null); ls.set('sl-sleeper-ids', null);
 
   async function api(path, opts = {}) {
     const res = await fetch(API + path, {
@@ -533,9 +533,7 @@
     let html = '';
     if (S.pending.length) html += `<button class="new-plays" data-act="show-new">${S.pending.length} new play${S.pending.length > 1 ? 's' : ''}</button>`;
     if (!S.feed.plays.length) {
-      const msg = S.feed.filter === 'team'
-        ? (S.myFantasyIds.size ? '<b>No plays from your team yet</b>Your players show up here the second they touch the ball.' : '<b>Bring in your fantasy team</b><a href="#/team">Connect your Sleeper league</a> to follow just your players.')
-        : S.feed.filter === 'mine'
+      const msg = S.feed.filter === 'mine'
         ? (S.me ? '<b>No plays from your lineup yet</b>Your players show up here as soon as they touch the ball. <a href="#/lineups">Build a lineup</a>' : '<b>Join to follow your lineup</b><a href="#" data-act="join">Pick a username</a>, then build a lineup.')
         : (() => {
           const next = S.games.filter((g) => g.state === 'pre').sort((a, b) => a.start - b.start)[0];
@@ -767,96 +765,6 @@
       </tbody></table>` : `<div class="empty">${S.pl.rows.length ? 'No players match.' : '<b>No players yet</b>They show up once this week\'s slate loads.'}</div>`;
   }
 
-  // ---------- my fantasy team (Sleeper) ----------
-  const SL = 'https://api.sleeper.app/v1';
-  const slGet = async (path) => { const r = await fetch(SL + path); if (!r.ok) throw new Error('Sleeper did not answer. Try again in a moment.'); return r.json(); };
-  const SLOT_NAMES = { SUPER_FLEX: 'SFLX', REC_FLEX: 'FLEX', WRRB_FLEX: 'FLEX', IDP_FLEX: 'IDP', DEF: 'DEF', K: 'K' };
-  function saveSleeper(v) { S.sl = v; ls.set('sl-sleeper', v ? JSON.stringify(v) : null); }
-  function setFantasyIds(ids) { S.myFantasyIds = new Set(ids.map(String)); ls.set('sl-sleeper-ids', JSON.stringify([...S.myFantasyIds])); }
-  async function showTeam() {
-    view.innerHTML = `${pageHead(weekLabel(), 'My team', 'Your real fantasy matchup, live<br>From your Sleeper league')}<div id="teamBody"><div class="empty">Loading…</div></div>`;
-    if (!S.sl?.leagueId) return teamConnect();
-    try { await teamMatchup(); } catch (e) { $('#teamBody').innerHTML = `<div class="empty"><b>Couldn't load your league</b>${esc(e.message)}<br><button class="btn ghost" data-act="sl-reset" style="margin-top:14px">Choose a different league</button></div>`; }
-  }
-  function teamConnect(err = '') {
-    $('#teamBody').innerHTML = `<div class="team-connect">
-      <p class="rules">Bring in your Sleeper team to see your matchup score live, follow only your players in the feed and get an alert when they score. Only your public Sleeper username is needed: no password.</p>
-      <form id="slForm" class="field"><label for="slUser">Sleeper username</label><input id="slUser" autocomplete="username" placeholder="e.g. waiverwire_wizard" value="${esc(S.sl?.username || '')}" required>
-      <div class="err" id="slErr">${esc(err)}</div><button class="btn" type="submit">Find my leagues</button></form>
-      <div id="slLeagues"></div>
-      <p class="rules">ESPN and Yahoo leagues need a sign-in, so they're not supported yet.</p></div>`;
-    $('#slForm').onsubmit = async (e) => {
-      e.preventDefault();
-      const name = $('#slUser').value.trim();
-      $('#slErr').textContent = '';
-      try {
-        const user = await slGet(`/user/${encodeURIComponent(name)}`);
-        if (!user?.user_id) throw new Error('No Sleeper user with that name.');
-        const leagues = await slGet(`/user/${user.user_id}/leagues/nfl/${S.week?.season || new Date().getFullYear()}`);
-        if (!leagues?.length) throw new Error(`No ${S.week?.season || ''} leagues found for ${name}.`);
-        S.slPick = { user, leagues };
-        $('#slLeagues').innerHTML = `<span class="label">Pick a league</span><div class="sl-leagues">${leagues.map((l) => `<button class="cz-opt" data-act="sl-league" data-id="${esc(l.league_id)}"><strong>${esc(l.name)}</strong><small>${l.total_rosters} teams · ${l.scoring_settings?.rec === 1 ? 'PPR' : l.scoring_settings?.rec === 0.5 ? 'Half PPR' : 'Standard'}</small></button>`).join('')}</div>`;
-      } catch (err) { $('#slErr').textContent = err.message; }
-    };
-  }
-  async function teamMatchup() {
-    const { leagueId, userId } = S.sl;
-    const week = S.sel || S.week?.week;
-    const [league, rosters, users, matchups, pl] = await Promise.all([
-      slGet(`/league/${leagueId}`), slGet(`/league/${leagueId}/rosters`), slGet(`/league/${leagueId}/users`),
-      slGet(`/league/${leagueId}/matchups/${week}`).catch(() => []), api(`/api/players${S.sel ? `?week=${S.sel}` : ''}`),
-    ]);
-    const mine = rosters.find((r) => r.owner_id === userId || (r.co_owners || []).includes(userId));
-    if (!mine) throw new Error('You are not on a team in this league.');
-    const me = (matchups || []).find((m) => m.roster_id === mine.roster_id);
-    const opp = me ? matchups.find((m) => m.matchup_id === me.matchup_id && m.roster_id !== me.roster_id) : null;
-    const oppRoster = opp ? rosters.find((r) => r.roster_id === opp.roster_id) : null;
-    const allIds = [...new Set([...(mine.players || []), ...(me?.starters || []), ...(opp?.starters || [])].filter((x) => x && x !== '0'))];
-    const { map } = await api(`/api/sleeper/map?ids=${allIds.join(',')}`);
-    const rows = new Map(pl.players.map((p) => [String(p.id), p]));
-    const sc = league.scoring_settings || {};
-    const slots = (league.roster_positions || []).filter((x) => x !== 'BN' && x !== 'IR' && x !== 'TAXI');
-    const player = (sid) => {
-      if (!sid || sid === '0') return { empty: true };
-      if (/^[A-Z]{2,3}$/.test(sid)) return { name: `${sid} D/ST`, team: sid, pos: 'DEF', def: true };
-      const row = rows.get(String(map[sid])) || null;
-      return row ? { ...row, pts: fpts(row, sc) } : { name: 'Not on this week\'s slate', unknown: true };
-    };
-    const team = (m, roster) => {
-      const starters = (m?.starters || roster?.starters || []).map(player);
-      const total = starters.reduce((a, p) => a + (p.pts || 0), 0);
-      const left = starters.filter((p) => !p.empty && !p.def && !p.unknown && p.gameState === 'pre').length;
-      const live = starters.filter((p) => p.gameState === 'in').length;
-      return { starters, total, left, live };
-    };
-    const A = team(me, mine), B = opp ? team(opp, oppRoster) : null;
-    const uname = (roster) => { const u = users.find((x) => x.user_id === roster?.owner_id); return u?.metadata?.team_name || u?.display_name || 'Opponent'; };
-    setFantasyIds((mine.players || []).map((sid) => map[sid]).filter(Boolean));
-    if (S.sl.rec !== sc.rec) { S.sl.rec = sc.rec; saveSleeper(S.sl); }
-    const cell = (p) => {
-      if (p.empty) return '<div class="tm-p empty">Empty</div>';
-      if (p.def || p.unknown) return `<div class="tm-p"><div class="nm">${esc(p.name)}</div><div class="sub">${p.def ? 'D/ST points not tracked yet' : ''}</div></div>`;
-      const st = p.gameState === 'pre' ? (p.kickoff ? kick(p.kickoff) : 'Not started') : p.gameState === 'post' ? `Final · ${esc(p.line || '')}` : `<span class="live">Live</span> · ${esc(p.line || '')}`;
-      return `<div class="tm-p ${p.gameState === 'in' ? 'is-live' : ''}">${face(p, 'face sm')}<div><div class="nm"><button class="plink" data-act="player" data-pid="${esc(p.id)}">${esc(p.name)}</button>${p.inj ? ` <span class="inj">${esc(p.inj)}</span>` : ''}</div><div class="sub">${esc(p.pos)} · ${esc(p.team)} · ${st}</div></div><b>${p.gameState === 'pre' ? '–' : fmt(p.pts)}</b></div>`;
-    };
-    const share = B && A.total + B.total > 0 ? A.total / (A.total + B.total) * 100 : 50;
-    const head = `<div class="tm-head">
-      <div class="tm-side me"><small>${esc(uname(mine))}</small><b>${fmt(A.total)}</b><span>${A.live ? `${A.live} playing · ` : ''}${A.left} yet to play</span></div>
-      <div class="tm-vs">vs</div>
-      <div class="tm-side"><small>${B ? esc(uname(oppRoster)) : 'No opponent'}</small><b>${B ? fmt(B.total) : '–'}</b><span>${B ? `${B.live ? `${B.live} playing · ` : ''}${B.left} yet to play` : ''}</span></div>
-      <div class="tm-bar"><i style="width:${share}%"></i></div></div>`;
-    const lines = slots.map((slot, i) => `<div class="tm-row"><span class="tm-slot">${esc(SLOT_NAMES[slot] || slot)}</span>${cell(A.starters[i] || { empty: true })}${B ? cell(B.starters[i] || { empty: true }) : ''}</div>`).join('');
-    const bench = (mine.players || []).filter((sid) => !(me?.starters || []).includes(sid)).map(player).filter((p) => !p.empty);
-    $('#teamBody').innerHTML = `${head}
-      <div class="tm-tools"><span class="label">${esc(league.name)} · ${sc.rec === 1 ? 'PPR' : sc.rec === 0.5 ? 'Half PPR' : 'Standard'} scoring</span>
-        <button class="pill ${S.alerts ? 'on' : ''}" data-act="alerts">${S.alerts ? 'Score alerts on' : 'Alert me when my players score'}</button>
-        <a class="pill" href="#/feed" data-act="team-feed">Plays from my team</a>
-        <button class="pill" data-act="sl-reset">Change league</button></div>
-      <div class="tm-grid ${B ? 'two' : ''}">${lines}</div>
-      ${bench.length ? `<details class="tm-bench"><summary class="label">Bench · ${fmt(bench.reduce((a, p) => a + (p.pts || 0), 0))} pts</summary>${bench.map((p) => `<div class="tm-row"><span class="tm-slot">BN</span>${cell(p)}</div>`).join('')}</details>` : ''}
-      <p class="rules">Points use your league's scoring for yards, touchdowns, catches (including position bonuses), turnovers and 2-pt conversions. Kickers use standard scoring; D/ST and IDP aren't tracked yet.</p>`;
-  }
-
   // ---------- one player's day ----------
   async function openPlayer(pid) {
     openSheet('Player', '<div class="empty">Loading…</div>');
@@ -1028,18 +936,6 @@
           renderLive();
           break;
         }
-        case 'sl-league': {
-          const l = S.slPick.leagues.find((x) => x.league_id === id);
-          saveSleeper({ username: S.slPick.user.display_name || S.slPick.user.username, userId: S.slPick.user.user_id, leagueId: id, leagueName: l?.name || '' });
-          if (l?.scoring_settings && !ls.get('sl-scoring-set')) {
-            const r = l.scoring_settings.rec;
-            S.fmt = r === 1 ? 'ppr' : r === 0.5 ? 'half' : r === 0 ? 'std' : S.fmt; ls.set('sl-scoring', S.fmt);
-          }
-          showTeam();
-          break;
-        }
-        case 'sl-reset': saveSleeper(null); setFantasyIds([]); showTeam(); break;
-        case 'team-feed': S.feed.filter = 'team'; break;
         case 'alerts': {
           if (!S.alerts && 'Notification' in window && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch { /* ignore */ } }
           S.alerts = !S.alerts; ls.set('sl-alerts', S.alerts ? '1' : null);
@@ -1243,7 +1139,7 @@
       if (g) g.splits = splits;
     });
     let pt;
-    const refreshPoints = () => { clearTimeout(pt); pt = setTimeout(() => { renderSide(); if (currentRoute() === 'lineups' && S.luTab === 'top') renderTopLineups(); if (currentRoute() === 'team' && S.sl?.leagueId && $('.tm-head')) teamMatchup().catch(() => {}); }, 1500); };
+    const refreshPoints = () => { clearTimeout(pt); pt = setTimeout(() => { renderSide(); if (currentRoute() === 'lineups' && S.luTab === 'top') renderTopLineups(); }, 1500); };
     es.addEventListener('points', refreshPoints);
     es.addEventListener('lineups', refreshPoints);
     es.addEventListener('leaderboard', () => { loadMe(); renderSide(); });
@@ -1262,7 +1158,6 @@
     else if (r === 'lineups') showLineups();
     else if (r === 'ranks') showRanks();
     else if (r === 'players') showPlayers();
-    else if (r === 'team') showTeam();
     else { gameTab = 'plays'; showFeed(); }
     window.scrollTo({ top: 0 });
   }

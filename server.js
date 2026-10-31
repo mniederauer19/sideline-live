@@ -8,7 +8,6 @@ const engine = require('./src/engine');
 const sidelineAuth = require('./src/sideline-auth');
 const persist = require('./src/persist');
 const { isOffensive } = require('./src/moderation');
-const sleeper = require('./src/sleeper');
 
 const app = express();
 app.set('trust proxy', true); // behind Railway / Cloudflare
@@ -207,17 +206,7 @@ app.get('/api/players', (req, res) => {
     }
   }
   const players = [...out.values()].sort((a, b) => b.ppr - a.ppr || (b.ppg || 0) - (a.ppg || 0));
-  for (const p of players) { const inj = sleeper.state.injuries[String(p.id)]; if (inj) p.inj = inj; }
   res.json({ week, players });
-});
-
-// Sleeper player IDs -> ESPN IDs for the ones asked about (for importing a Sleeper team)
-app.get('/api/sleeper/map', async (req, res) => {
-  await sleeper.ensure();
-  const ids = String(req.query.ids || '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 400);
-  const map = {};
-  for (const id of ids) if (sleeper.state.map[id]) map[id] = sleeper.state.map[id];
-  res.json({ map, ready: sleeper.state.count > 0 });
 });
 
 // ---------- feed ----------
@@ -540,7 +529,6 @@ process.on('SIGTERM', async () => {
   cleanUpOffensive();
   nflverse.start();
   engine.start();
-  sleeper.ensure();
   app.listen(cfg.PORT, () => console.log(`Sideline Live on http://localhost:${cfg.PORT}${cfg.DEMO ? '  (DEMO MODE)' : ''}`));
 
   // Free hosts (like Render) put the site to sleep after 15 minutes without visitors, which
