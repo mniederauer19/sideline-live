@@ -878,3 +878,37 @@ html[data-look="modern"] .play.is-mine:not(.is-td) { padding-left: 22px; }
 .tp-sub { display: block; font-size: 12px; margin-top: 3px; }
 .tp-note { margin-top: 12px; }
 @media (max-width: 640px) { .tp-share { grid-template-columns: auto; } .tp-share > i { display: none; } .tp-usage th { white-space: normal; } }
+
+/* ---------- motion ---------- */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .22s; animation-timing-function: cubic-bezier(.2,.8,.2,1); }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+#view.enter .page-head, #view.enter .tp-head, #view.enter .game-head, #view.enter > .pills, #view.enter .tp-bar, #view.enter .live-grid,
+#view.enter tbody tr, #view.enter .feed > *, #view.enter .pool-tools, #view.enter .tp-others { animation: rise .5s cubic-bezier(.2,.8,.2,1) both; }
+#view.enter .tp-bar, #view.enter > .pills, #view.enter .pool-tools { animation-delay: 70ms; }
+#view.enter tbody tr:nth-child(n+15), #view.enter .feed > :nth-child(n+15) { animation: none; }
+#view.enter tbody tr:nth-child(1), #view.enter .feed > :nth-child(1) { animation-delay: 90ms; }
+#view.enter tbody tr:nth-child(2), #view.enter .feed > :nth-child(2) { animation-delay: 120ms; }
+#view.enter tbody tr:nth-child(3), #view.enter .feed > :nth-child(3) { animation-delay: 150ms; }
+#view.enter tbody tr:nth-child(4), #view.enter .feed > :nth-child(4) { animation-delay: 180ms; }
+#view.enter tbody tr:nth-child(5), #view.enter .feed > :nth-child(5) { animation-delay: 210ms; }
+#view.enter tbody tr:nth-child(6), #view.enter .feed > :nth-child(6) { animation-delay: 240ms; }
+#view.enter tbody tr:nth-child(7), #view.enter .feed > :nth-child(7) { animation-delay: 270ms; }
+#view.enter tbody tr:nth-child(8), #view.enter .feed > :nth-child(8) { animation-delay: 300ms; }
+#view.enter tbody tr:nth-child(9), #view.enter .feed > :nth-child(9) { animation-delay: 330ms; }
+#view.enter tbody tr:nth-child(10), #view.enter .feed > :nth-child(10) { animation-delay: 360ms; }
+#view.enter tbody tr:nth-child(11), #view.enter .feed > :nth-child(11) { animation-delay: 390ms; }
+#view.enter tbody tr:nth-child(12), #view.enter .feed > :nth-child(12) { animation-delay: 420ms; }
+#view.enter tbody tr:nth-child(13), #view.enter .feed > :nth-child(13) { animation-delay: 450ms; }
+#view.enter tbody tr:nth-child(14), #view.enter .feed > :nth-child(14) { animation-delay: 480ms; }
+.bump { animation: bump 1.1s ease-out; }
+@keyframes bump { 0% { background: color-mix(in srgb, var(--gold) 22%, transparent); color: var(--gold); } 100% { background: transparent; } }
+.sheet-wrap:not([hidden]) .sheet { animation: sheet-in .32s cubic-bezier(.2,.8,.2,1); }
+.sheet-wrap:not([hidden]) .sheet-scrim { animation: scrim-in .25s ease-out; }
+@keyframes sheet-in { from { transform: translateX(40px); opacity: 0; } }
+@keyframes scrim-in { from { opacity: 0; } }
+@media (max-width: 640px) { @keyframes sheet-in { from { transform: translateY(40px); opacity: 0; } } }
+.pill, .tp-chip, .tlink, .tp-game { transition: background-color .18s, color .18s, border-color .18s; }
+@media (prefers-reduced-motion: reduce) {
+  #view.enter *, .bump, .sheet-wrap:not([hidden]) .sheet, .sheet-wrap:not([hidden]) .sheet-scrim { animation: none !important; }
+  ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
+}

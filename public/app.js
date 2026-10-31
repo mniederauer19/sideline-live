@@ -34,6 +34,27 @@
 
   const $ = (sel, el = document) => el.querySelector(sel);
   const view = $('#view');
+
+  // ---------- motion ----------
+  // Page changes cross-fade, a freshly opened page's blocks rise in, and numbers that change count up.
+  const calm = window.matchMedia('(prefers-reduced-motion: reduce)');
+  function swap(fn) {
+    if (calm.matches || !document.startViewTransition) return fn();
+    try { return document.startViewTransition(fn); } catch { return fn(); }
+  }
+  let enterTimer;
+  function markEnter() {
+    if (calm.matches) return;
+    view.classList.remove('enter'); void view.offsetWidth; view.classList.add('enter');
+    clearTimeout(enterTimer); enterTimer = setTimeout(() => view.classList.remove('enter'), 1800);
+  }
+  function countUp(el, from, to, digits = 1) {
+    if (!el || calm.matches || from == null || from === to || !isFinite(from)) return;
+    const t0 = performance.now(), dur = 650;
+    const step = (t) => { const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = (from + (to - from) * e).toFixed(digits); if (k < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  }
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, d = 1) => (Math.round(n * 10 ** d) / 10 ** d).toFixed(d);
   const signed = (n, d = 1) => { const r = Number(fmt(Math.abs(n), d)); return `${r === 0 ? '' : n > 0 ? '+' : '−'}${fmt(Math.abs(n), d)}`; };
@@ -744,7 +765,7 @@
       <div id="plList"><div class="empty">Loading players…</div></div>`;
     $('#plPos').addEventListener('click', (e) => {
       const b = e.target.closest('[data-p]'); if (!b) return;
-      S.pl.pos = b.dataset.p; $('#plPos').querySelectorAll('.pill').forEach((x) => x.classList.toggle('on', x === b)); drawPlayers();
+      S.pl.pos = b.dataset.p; $('#plPos').querySelectorAll('.pill').forEach((x) => x.classList.toggle('on', x === b)); swap(drawPlayers);
     });
     $('#plQ').addEventListener('input', (e) => { S.pl.q = e.target.value; drawPlayers(); });
     await loadPlayers();
@@ -796,6 +817,9 @@
       .map((p) => ({ ...p, tot: p.sea + p.wk, avg: (p.games + (p.played ? 1 : 0)) ? (p.sea + p.wk) / (p.games + (p.played ? 1 : 0)) : 0 }))
       .sort((a, b) => S.tm.sort === 'week' || d.college ? b.wk - a.wk || b.tot - a.tot : b.tot - a.tot || b.wk - a.wk);
     const teamWk = rows.reduce((a, p) => a + p.wk, 0);
+    // Live updates: remember last values so changed numbers can flash and the team total can count up
+    const prevWk = S.tm.prevWk && S.tm.prevAbbr === d.abbr ? S.tm.prevWk : null, prevTotal = S.tm.prevAbbr === d.abbr ? S.tm.prevTotal : null;
+    S.tm.prevWk = new Map(rows.map((p) => [String(p.id), p.wk])); S.tm.prevTotal = teamWk; S.tm.prevAbbr = d.abbr;
     const pos = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K'].filter((x) => x === 'ALL' || d.players.some((p) => p.pos === x));
     const sortBtn = (k, l) => `<button class="pill ${S.tm.sort === k ? 'on' : ''}" data-act="tmsort" data-v="${k}">${l}</button>`;
     const viewBtn = (k, l) => `<button class="pill ${S.tm.view === k ? 'on' : ''}" data-act="tmview" data-v="${k}">${l}</button>`;
@@ -823,11 +847,12 @@
         ${rows.map((p) => `<tr class="${S.myLineupIds.has(String(p.id)) || S.myFantasyIds.has(String(p.id)) ? 'mine' : ''}">
           <td><div class="nm">${face(p, 'face sm')}<span><button class="plink" data-act="player" data-pid="${esc(p.id)}">${esc(p.name)}</button><span class="pos">${esc(p.pos || '')}</span></span></div>
           <div class="sub">${esc(p.line || (p.played ? '' : g && g.state === 'pre' ? 'Not started' : g ? 'No stats' : ''))}</div></td>
-          <td class="num ${d.college ? 'pp' : ''}">${p.played || (g && g.state !== 'pre') ? fmt(p.wk) : '–'}</td>
+          <td class="num ${d.college ? 'pp' : ''} ${prevWk && prevWk.has(String(p.id)) && p.wk > prevWk.get(String(p.id)) + 0.001 ? 'bump' : ''}">${p.played || (g && g.state !== 'pre') ? fmt(p.wk) : '–'}</td>
           ${d.college ? '' : `<td class="num pp">${fmt(p.tot)}</td><td class="num sub">${fmt(p.avg)}</td><td class="num sub gp">${p.games + (p.played ? 1 : 0)}</td>`}</tr>`).join('')}
       </tbody></table></div>` : '<div class="empty">No fantasy points for this team yet.</div>'}
       ${d.others?.length ? `<div class="tp-others"><span class="label">Other teams this week</span><div>${d.others.map((x) => `<a class="tp-chip" href="#/team/${encodeURIComponent(x)}">${tlogo(x)}${esc(x)}</a>`).join('')}</div></div>` : ''}`;
-    $('#tmPos').addEventListener('click', (e) => { const b = e.target.closest('[data-p]'); if (!b) return; S.tm.pos = b.dataset.p; drawTeam(); });
+    countUp($('.tp-total b'), prevTotal, teamWk);
+    $('#tmPos').addEventListener('click', (e) => { const b = e.target.closest('[data-p]'); if (!b) return; S.tm.pos = b.dataset.p; swap(drawTeam); });
   }
 
   // ---------- one player's day ----------
@@ -971,8 +996,8 @@
     try {
       switch (act) {
         case 'go': location.hash = t.dataset.href; break;
-        case 'tmsort': S.tm.sort = t.dataset.v; drawTeam(); break;
-        case 'tmview': S.tm.view = t.dataset.v; drawTeam(); break;
+        case 'tmsort': S.tm.sort = t.dataset.v; swap(drawTeam); break;
+        case 'tmview': S.tm.view = t.dataset.v; swap(drawTeam); break;
         case 'week': selectWeek(Number(t.dataset.w)); break;
         case 'cz': setSetting(t.dataset.k, t.dataset.v); break;
         case 'join': e.preventDefault(); requireUser(); break;
@@ -1228,6 +1253,7 @@
     const r = currentRoute();
     document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('on', a.dataset.nav === r || (r === 'game' && a.dataset.nav === 'feed') || (r === 'team' && a.dataset.nav === 'players')));
     S.pickerFor = null;
+    markEnter();
     renderStrip();
     if (r === 'game') { showGame(currentGameId()); }
     else if (r === 'picks') showPicks();
@@ -1238,7 +1264,7 @@
     else { gameTab = 'plays'; showFeed(); }
     window.scrollTo({ top: 0 });
   }
-  window.addEventListener('hashchange', route);
+  window.addEventListener('hashchange', () => swap(route));
 
   (async () => {
     await Promise.all([loadMe(), refreshGames().catch(() => {}), loadSchedule()]);
