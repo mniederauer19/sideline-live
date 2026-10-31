@@ -263,6 +263,7 @@ function processSummaryTx(game, summary, opts, gs) {
     for (const a of r.roster || []) entries.push({ id: a.athlete?.id, name: a.athlete?.displayName, team: r.team?.abbreviation, pos: a.position?.abbreviation, headshot: a.athlete?.headshot?.href });
   }
   const index = rosterIndex(entries);
+  const nameOf = new Map(entries.filter((e) => e.id && e.name).map((e) => [String(e.id), e]));
   const wp = new Map((summary.winprobability || []).map((w) => [String(w.playId), w.homeWinPercentage]));
 
   // Gather plays in order
@@ -393,7 +394,8 @@ function processSummaryTx(game, summary, opts, gs) {
   }
   for (const t of totals.values()) {
     t.ppr = pprFromStats(t.s); t.line = statLine(t.s);
-    if (!t.name) { const nv = nflverse.get(t.id); t.name = nv?.name || ''; t.team = t.team || nv?.team || ''; }
+    // Players only seen in plays (kickers aren't in the box score's skill-player lists): name them from the rosters
+    if (!t.name) { const nv = nflverse.get(t.id), e = nameOf.get(String(t.id)); t.name = nv?.name || e?.name || ''; t.team = t.team || nv?.team || e?.team || ''; }
     if (t.name) upsertBox.run(game.id, t.id, t.name, t.team || '', t.ppr, t.line, JSON.stringify(t.s));
   }
   gs.box = totals;

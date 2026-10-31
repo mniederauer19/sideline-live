@@ -178,7 +178,8 @@ app.get('/api/leaders', (req, res) => {
     for (const t of engine.boxFor(g.id).values()) {
       const nv = nflverse.get(t.id);
       if (!nv && !t.name) continue;
-      players.push({ id: t.id, name: nv?.name || t.name, pos: nv?.pos || (g.extra ? '' : 'K'), team: nv?.team || t.team, ppr: t.ppr, line: t.line, gameState: g.state, headshot: nv?.headshot || t.headshot || '' });
+      if (!posOf(nv, t) && !hasFantasy(t)) continue;
+      players.push({ id: t.id, name: nv?.name || t.name, pos: posOf(nv, t), team: nv?.team || t.team, ppr: t.ppr, line: t.line, gameState: g.state, headshot: nv?.headshot || t.headshot || '' });
     }
   }
   players.sort((a, b) => b.ppr - a.ppr);
@@ -199,7 +200,8 @@ app.get('/api/players', (req, res) => {
       const nv = nflverse.get(t.id);
       if (!nv && !t.name) continue;
       const team = nv?.team || t.team, prev = out.get(String(t.id)) || {};
-      out.set(String(t.id), { ...prev, id: t.id, name: nv?.name || t.name, pos: nv?.pos || prev.pos || (g.extra ? '' : 'K'), team,
+      if (!posOf(nv, t) && !hasFantasy(t) && !prev.id) continue;
+      out.set(String(t.id), { ...prev, id: t.id, name: nv?.name || t.name, pos: posOf(nv, t) || prev.pos || '', team,
         headshot: nv?.headshot || t.headshot || prev.headshot || '', ppg: nv?.ppg ?? prev.ppg ?? null, ppr: t.ppr, line: t.line, s: t.s || {},
         gameState: g.state, kickoff: prev.kickoff ?? g.start ?? null,
         opp: prev.opp ?? (g.home.abbr === team ? g.away.abbr : g.home.abbr), home: prev.home ?? g.home.abbr === team });
@@ -208,6 +210,11 @@ app.get('/api/players', (req, res) => {
   const players = [...out.values()].sort((a, b) => b.ppr - a.ppr || (b.ppg || 0) - (a.ppg || 0));
   res.json({ week, players });
 });
+
+// Position for a box-score row: nflverse knows skill players; kicking stats mean a kicker; anyone else (a defender
+// who recovered a fumble, say) has no fantasy position.
+const posOf = (nv, t) => nv?.pos || (t.s && (t.s.fga || t.s.xpa || t.s.fgm || t.s.xpm) ? 'K' : '');
+const hasFantasy = (t) => t.ppr !== 0 || !!t.line;
 
 // Snap share (official counts, through the week before the one shown): last game, last 3 and season average.
 function usage(p, week) {
@@ -233,7 +240,8 @@ app.get('/api/teams/:abbr', (req, res) => {
     if (t.team !== abbr && nflverse.get(t.id)?.team !== abbr) continue;
     const nv = nflverse.get(t.id), prev = out.get(String(t.id)) || { games: 0, seasonPpr: 0, seasonRec: 0 };
     if (!nv && !t.name) continue;
-    out.set(String(t.id), { ...prev, id: t.id, name: nv?.name || t.name, pos: nv?.pos || prev.pos || (g.extra ? '' : 'K'), team: abbr,
+    if (!posOf(nv, t) && !hasFantasy(t)) continue;
+    out.set(String(t.id), { ...prev, id: t.id, name: nv?.name || t.name, pos: posOf(nv, t) || prev.pos || '', team: abbr,
       headshot: nv?.headshot || t.headshot || prev.headshot || '', ppr: t.ppr, line: t.line, s: t.s || {}, played: true });
   }
   // Live usage this game: each player's share of the team's targets and carries.
