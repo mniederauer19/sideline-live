@@ -379,6 +379,7 @@
   const isMine = (p) => p.players?.some((x) => S.myFantasyIds.has(String(x.id)));
   function badges(p) {
     const out = [];
+    if (p.quick && Date.now() - p.ts < 90e3) out.push('<span class="badge first" title="ESPN\'s first look at this play. Details fill in as soon as they\'re posted.">First look</span>');
     if (isMine(p)) out.push('<span class="badge mine">Your team</span>');
     if (p.td) out.push('<span class="badge td">Touchdown</span>');
     if (p.kind === 'int' || p.players.some((x) => x.stat?.fumLost)) out.push('<span class="badge to">Turnover</span>');
@@ -1125,7 +1126,11 @@
       p.social = S.feed.plays[i].social;
       S.feed.plays[i] = p;
       const el = document.querySelector(`#feedList [data-play="${CSS.escape(p.id)}"]`);
-      if (el) el.outerHTML = playCard(p);
+      if (el) {
+        el.outerHTML = playCard(p);
+        const now = document.querySelector(`#feedList [data-play="${CSS.escape(p.id)}"]`);
+        if (now) { now.classList.add('filled'); countUp(now); }
+      }
     });
     es.addEventListener('refresh', (e) => {
       const { gameId } = JSON.parse(e.data);

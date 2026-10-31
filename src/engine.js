@@ -303,7 +303,8 @@ function processSummaryTx(game, summary, opts, gs) {
     if (base.play.kind === 'admin') return;
 
     // Nothing new up to here: just carry the running totals forward
-    if (!dirty && existing.has(id)) {
+    // (a play still showing as a first look is rebuilt so its card gets confirmed)
+    if (!dirty && existing.has(id) && !gs.quick?.has(id)) {
       for (const p of base.play.players) if (p.id) accumulate(p);
       const w = wp.get(id);
       if (w != null && base.play.offense) lastWp = w;
@@ -443,45 +444,73 @@ async function pollCore(game) {
     const items = pages.flatMap((x) => x.items || []).map(normCore)
       .sort((a, b) => (Number(a.sequenceNumber) || 0) - (Number(b.sequenceNumber) || 0));
     if (!gs.parsed) gs.parsed = new Map();
-    const existing = new Set(selectGamePlays.all(game.id).map((x) => x.id));
-    const fresh = [];
+    if (!gs.quick) gs.quick = new Map();
+    const existing = new Map(selectGamePlays.all(game.id).map((x) => [x.id, x]));
+    const fresh = [], updated = [];
+    const ctx = { gameId: game.id, ...gs.ctx, homeAbbr: game.home.abbr, awayAbbr: game.away.abbr };
+    const addStats = (players, sign) => {
+      if (!gs.qacc) gs.qacc = new Map([...(gs.accBase || new Map())].map(([k, v]) => [k, { ppr: v.ppr, s: { ...v.s } }]));
+      for (const p of players) {
+        if (!p.id) continue;
+        const a = gs.qacc.get(p.id) || { ppr: 0, s: {} };
+        a.ppr = r2(a.ppr + sign * p.ppr);
+        for (const [k, v] of Object.entries(p.stat)) a.s[k] = (a.s[k] || 0) + sign * v;
+        gs.qacc.set(p.id, a);
+      }
+    };
+    // A card from ESPN's first look at a play. ESPN often posts a play quickly
+    // ("pass incomplete short right") and fills it in ~10s later ("... deep right to K.Johnson");
+    // the card is marked "first look" until the game summary confirms it.
+    const card = (base, ts) => {
+      const play = structuredClone(base.play);
+      for (const p of play.players) {
+        if (!p.id) continue;
+        const a = gs.qacc.get(p.id) || { ppr: 0, s: {} };
+        const nv = nflverse.get(p.id);
+        if (nv) { p.pos = p.pos || nv.pos; p.headshot = p.headshot || nv.headshot; p.season = { ppg: nv.ppg, tgtShare: nv.tgtShare, adot: nv.adot, games: nv.games }; }
+        p.gamePpr = a.ppr;
+        p.gameLine = p.pos === 'DST' ? '' : statLine(a.s);
+      }
+      if (play.epa != null) play.tags.push({ icon: play.epa >= 0 ? '📈' : '📉', text: `${play.epa >= 0 ? '+' : ''}${play.epa.toFixed(1)} EPA` });
+      play.game = { id: game.id, home: game.home.abbr, away: game.away.abbr };
+      play.ts = ts;
+      play.quick = true;
+      const data = JSON.stringify(play);
+      insertPlay.run({
+        id: play.id, game_id: game.id, seq: play.seq || 0, ts,
+        ppr: play.ppr, scoring: play.scoring ? 1 : 0, explosive: play.explosive ? 1 : 0,
+        player_ids: `,${play.players.map((p) => p.id).filter(Boolean).join(',')},`,
+        hash: crypto.createHash('sha1').update(data).digest('hex'), data,
+      });
+      return play;
+    };
     db.transaction(() => {
       for (const raw of items) {
         const id = String(raw.id);
-        if (existing.has(id) || gs.parsed.has(id)) continue;
-        const base = { sig: playSig(raw), play: parsePlay(textFor(game, raw), { gameId: game.id, ...gs.ctx, homeAbbr: game.home.abbr, awayAbbr: game.away.abbr }) };
+        const sig = playSig(raw);
+        const prev = gs.parsed.get(id);
+        if (existing.has(id) || prev) {
+          // ESPN filled in a play we showed as a first look: update the card right away
+          if (!gs.quick.has(id) || !prev || prev.sig === sig) continue;
+          const base = { sig, play: parsePlay(textFor(game, raw), ctx) };
+          gs.parsed.set(id, base);
+          addStats(prev.play.players, -1);
+          if (base.play.kind === 'admin') { deletePlay.run(id); gs.quick.delete(id); continue; }
+          addStats(base.play.players, +1);
+          updated.push(card(base, existing.get(id)?.ts || Date.now()));
+          continue;
+        }
+        const base = { sig, play: parsePlay(textFor(game, raw), ctx) };
         gs.parsed.set(id, base);
         if (base.play.kind === 'admin') continue;
-        if (!gs.qacc) gs.qacc = new Map([...(gs.accBase || new Map())].map(([k, v]) => [k, { ppr: v.ppr, s: { ...v.s } }]));
-        const play = structuredClone(base.play);
-        for (const p of play.players) {
-          if (!p.id) continue;
-          const a = gs.qacc.get(p.id) || { ppr: 0, s: {} };
-          a.ppr = r2(a.ppr + p.ppr);
-          for (const [k, v] of Object.entries(p.stat)) a.s[k] = (a.s[k] || 0) + v;
-          gs.qacc.set(p.id, a);
-          const nv = nflverse.get(p.id);
-          if (nv) { p.pos = p.pos || nv.pos; p.headshot = p.headshot || nv.headshot; p.season = { ppg: nv.ppg, tgtShare: nv.tgtShare, adot: nv.adot, games: nv.games }; }
-          p.gamePpr = a.ppr;
-          p.gameLine = p.pos === 'DST' ? '' : statLine(a.s);
-        }
-        if (play.epa != null) play.tags.push({ icon: play.epa >= 0 ? '📈' : '📉', text: `${play.epa >= 0 ? '+' : ''}${play.epa.toFixed(1)} EPA` });
-        play.game = { id: game.id, home: game.home.abbr, away: game.away.abbr };
-        play.ts = Date.now();
-        const data = JSON.stringify(play);
-        insertPlay.run({
-          id: play.id, game_id: game.id, seq: play.seq || 0, ts: play.ts,
-          ppr: play.ppr, scoring: play.scoring ? 1 : 0, explosive: play.explosive ? 1 : 0,
-          player_ids: `,${play.players.map((p) => p.id).filter(Boolean).join(',')},`,
-          hash: crypto.createHash('sha1').update(data).digest('hex'), data,
-        });
-        if (!gs.quick) gs.quick = new Map();
-        gs.quick.set(play.id, Number(raw.sequenceNumber) || 0);
-        fresh.push(play);
+        addStats(base.play.players, +1);
+        gs.quick.set(id, Number(raw.sequenceNumber) || 0);
+        fresh.push(card(base, Date.now()));
       }
     })();
     for (const p of fresh) bus.emit('play', p);
-    if (fresh.length) bus.emit('points', { gameId: game.id });
+    for (const p of updated) bus.emit('play_update', p);
+    if (fresh.length || updated.length) bus.emit('points', { gameId: game.id });
   } catch (e) {
     console.warn(`[engine] fast plays for ${game.id}: ${e.message}`);
   } finally { gs.coreBusy = false; }

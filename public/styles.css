@@ -827,3 +827,10 @@ html[data-look="modern"] .play.is-mine:not(.is-td) { padding-left: 22px; }
   .tm-p .nm { font-size: 13px; }
   .nav a { font-size: 9.5px; }
 }
+
+/* first look: ESPN's quick version of a play, filled in a few seconds later */
+.badge.first { display: inline-flex; align-items: center; gap: 5px; border: 1px solid color-mix(in srgb, var(--live) 55%, transparent); color: var(--live); }
+.badge.first::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--live); animation: pulse 1.6s ease-out infinite; }
+.play.filled { animation: filled 1.2s ease-out; }
+@keyframes filled { 0% { background: color-mix(in srgb, var(--gold) 14%, transparent); } 100% { background: transparent; } }
+@media (prefers-reduced-motion: reduce) { .badge.first::before, .play.filled { animation: none; } }
