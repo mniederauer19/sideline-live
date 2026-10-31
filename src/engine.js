@@ -333,7 +333,7 @@ function processSummaryTx(game, summary, opts, gs) {
       if (!p.id) continue;
       const a = accumulate(p);
       const nv = nflverse.get(p.id);
-      if (nv) { p.pos = p.pos || nv.pos; p.headshot = p.headshot || nv.headshot; p.season = { ppg: nv.ppg, tgtShare: nv.tgtShare, adot: nv.adot, games: nv.games }; }
+      if (nv) { p.pos = p.pos || nv.pos; p.headshot = p.headshot || nv.headshot; p.gsis = nv.gsis; p.season = { ppg: nv.ppg, tgtShare: nv.tgtShare, adot: nv.adot, games: nv.games }; }
       p.gamePpr = a.ppr;
       p.gameLine = p.pos === 'DST' ? '' : statLine(a.s);
       if ((p.role === 'receiver' || p.role === 'target') && a.s.tgt >= 3 && teamTgt[p.team]) {
@@ -483,7 +483,7 @@ async function pollCore(game) {
         if (!p.id) continue;
         const a = gs.qacc.get(p.id) || { ppr: 0, s: {} };
         const nv = nflverse.get(p.id);
-        if (nv) { p.pos = p.pos || nv.pos; p.headshot = p.headshot || nv.headshot; p.season = { ppg: nv.ppg, tgtShare: nv.tgtShare, adot: nv.adot, games: nv.games }; }
+        if (nv) { p.pos = p.pos || nv.pos; p.headshot = p.headshot || nv.headshot; p.gsis = nv.gsis; p.season = { ppg: nv.ppg, tgtShare: nv.tgtShare, adot: nv.adot, games: nv.games }; }
         p.gamePpr = a.ppr;
         p.gameLine = p.pos === 'DST' ? '' : statLine(a.s);
       }

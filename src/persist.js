@@ -15,7 +15,7 @@ const enabled = !!URL;
 
 const INT = 'BIGINT', TXT = 'TEXT', REAL = 'DOUBLE PRECISION';
 const TABLES = {
-  users: { pk: ['id'], cols: { id: INT, name: TXT, token: TXT, credits: INT, created_at: INT, ext_id: TXT } },
+  users: { pk: ['id'], cols: { id: INT, name: TXT, token: TXT, credits: INT, created_at: INT, ext_id: TXT, profile: TXT } },
   reactions: { pk: ['play_id', 'user_id', 'emoji'], cols: { play_id: TXT, user_id: INT, emoji: TXT } },
   votes: { pk: ['play_id', 'user_id'], cols: { play_id: TXT, user_id: INT, value: INT } },
   comments: { pk: ['id'], cols: { id: INT, play_id: TXT, user_id: INT, body: TXT, created_at: INT } },
@@ -98,6 +98,8 @@ async function restore() {
   for (const [table, t] of Object.entries(TABLES)) {
     const colsSql = Object.entries(t.cols).map(([c, type]) => `${c} ${type}`).join(', ');
     await p.query(`CREATE TABLE IF NOT EXISTS ${pgName(table)} (${colsSql}, PRIMARY KEY (${t.pk.join(',')}))`);
+    // columns added in later versions
+    for (const [c, type] of Object.entries(t.cols)) await p.query(`ALTER TABLE ${pgName(table)} ADD COLUMN IF NOT EXISTS ${c} ${type}`);
   }
   let pulled = 0, pushed = 0;
   for (const [table, t] of Object.entries(TABLES)) {

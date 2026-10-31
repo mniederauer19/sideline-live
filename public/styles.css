@@ -938,3 +938,34 @@ html[data-look="classic"] .lg-top h2 { text-transform: uppercase; }
 
 .nav .n-short { display: none; }
 @media (max-width: 720px) { .nav .n-full { display: none; } .nav .n-short { display: inline; } .nav a { white-space: nowrap; } }
+
+/* =====================================================================
+   SIDELINEFF.COM PROFILES (avatars, name tags, account sheet)
+   ===================================================================== */
+.ua { display: inline-grid; place-items: center; flex: 0 0 auto; border-radius: 50%; overflow: hidden; background: var(--card-2); color: #fff; font-weight: 700; line-height: 1; vertical-align: middle; }
+.ua img { width: 100%; height: 100%; object-fit: cover; }
+.ua-team { background: transparent; }
+.ua-team .tlogo { width: 100%; height: 100%; }
+.un { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; color: var(--ink); }
+.un b { font-weight: 700; }
+.un-link:hover b { text-decoration: underline; text-underline-offset: 3px; }
+.un-team .tlogo { width: 16px; height: 16px; }
+.un-lvl { padding: 1px 6px; border: 1px solid var(--line-2); border-radius: 99px; font: 600 10px/1.4 var(--label-font); letter-spacing: 0.5px; color: var(--muted); }
+.un-badge { padding: 1px 7px; border-radius: 99px; background: color-mix(in srgb, var(--gold) 18%, transparent); color: var(--gold); font: 600 10px/1.4 var(--label-font); letter-spacing: 0.8px; text-transform: uppercase; }
+.cmt { display: flex; gap: 10px; align-items: flex-start; }
+.cmt > div { min-width: 0; flex: 1; }
+.cmt .by { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cmt .by > span:last-child { font: var(--label-w) 10px/1 var(--label-font); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); }
+.pc-head { display: flex; flex-direction: column; gap: 4px; margin: 22px 0 4px; padding-top: 14px; border-top: 1px solid var(--line); }
+.pc-head .sub { color: var(--muted); font-size: 12.5px; }
+.pc-reply { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+.me-btn.has-profile { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 4px; }
+.me-btn .ua { width: 24px; height: 24px; }
+.rk-who { display: flex; align-items: center; gap: 8px; }
+.acct-card { display: flex; gap: 14px; align-items: center; padding: 18px 0 14px; }
+.acct-card .sub { color: var(--muted); font-size: 13px; margin-top: 4px; }
+.acct-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 14px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.acct-stats div { display: flex; flex-direction: column-reverse; gap: 4px; }
+.acct-stats b { font: var(--stat-w) 26px/1 var(--stat); color: var(--ink); }
+.acct-stats span { font: var(--label-w) 10px/1 var(--label-font); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); }
+.acct-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 10px; }

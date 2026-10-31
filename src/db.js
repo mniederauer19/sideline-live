@@ -95,6 +95,7 @@ function CREATE_EXTRA() {
   // Added for the full-season backfill (safe to run on an existing database)
   try { db.exec('ALTER TABLE games ADD COLUMN synced_at INTEGER'); } catch { /* already there */ }
   try { db.exec('ALTER TABLE users ADD COLUMN ext_id TEXT'); } catch { /* already there */ }
+  try { db.exec('ALTER TABLE users ADD COLUMN profile TEXT'); } catch { /* already there */ }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS users_ext ON users(ext_id) WHERE ext_id IS NOT NULL');
   db.exec(`
 CREATE TABLE IF NOT EXISTS game_players (

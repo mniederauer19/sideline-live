@@ -16,7 +16,8 @@ const cache = new Map(); // sha256(cookie) -> { at, user }
 const TTL = 60e3;
 
 const q = {
-  byExt: db.prepare('SELECT id, name, credits FROM users WHERE ext_id=?'),
+  byExt: db.prepare('SELECT id, name, credits, profile FROM users WHERE ext_id=?'),
+  setProfile: db.prepare('UPDATE users SET profile=? WHERE id=?'),
   byName: db.prepare('SELECT id FROM users WHERE name=?'),
   insert: db.prepare('INSERT INTO users (name, token, credits, created_at, ext_id) VALUES (?, ?, ?, ?, ?)'),
   rename: db.prepare('UPDATE users SET name=? WHERE id=?'),
@@ -32,9 +33,20 @@ function identity(profile) {
   return { id: String(id), name: clean && !isOffensive(clean) ? clean : 'player' };
 }
 
-function localUserFor(ident) {
+// The parts of a sidelineff.com profile shown next to someone's name (same as the main site)
+function publicProfile(p) {
+  if (!p || typeof p !== 'object') return null;
+  const pick = { username: p.username ?? p.handle ?? null, color: p.color ?? null, team: p.team ?? null, avatar: p.avatar ?? null,
+    level: p.level ?? null, title: p.title ?? null, shown: p.shown ?? null, badges: Array.isArray(p.badges) ? p.badges.slice(0, 8) : undefined };
+  return pick.username ? pick : null;
+}
+const state = { lastStatus: null, lastError: null, lastAt: 0 };
+
+function localUserFor(ident, profile) {
+  const pub = profile ? JSON.stringify(publicProfile(profile)) : null;
   const found = q.byExt.get(ident.id);
   if (found) {
+    if (pub && found.profile !== pub) { q.setProfile.run(pub, found.id); found.profile = pub; persist.upsert('users', { id: found.id }); }
     // keep the display name in step with sidelineff.com
     if (found.name !== ident.name && !q.byName.get(ident.name)) { q.rename.run(ident.name, found.id); found.name = ident.name; persist.upsert('users', { id: found.id }); }
     return found;
@@ -43,6 +55,7 @@ function localUserFor(ident) {
   for (let i = 2; q.byName.get(name); i++) name = `${ident.name.slice(0, 17)}${i}`;
   q.insert.run(name, `ext:${crypto.randomBytes(24).toString('hex')}`, cfg.START_CREDITS, Date.now(), ident.id);
   const user = q.byExt.get(ident.id);
+  if (pub) { q.setProfile.run(pub, user.id); user.profile = pub; }
   persist.upsert('users', { id: user.id });
   return user;
 }
@@ -58,13 +71,16 @@ async function userFromCookie(cookie) {
       headers: { cookie, accept: 'application/json', 'user-agent': 'sideline-live' },
       signal: AbortSignal.timeout(4000),
     });
+    Object.assign(state, { lastStatus: res.status, lastError: null, lastAt: Date.now() });
     if (res.ok) {
       const body = await res.json();
-      const ident = body?.signedIn !== false ? identity(body.profile ?? body.user ?? body) : null;
-      if (ident) { user = localUserFor(ident); ext = ident.id; }
+      const prof = body.profile ?? body.user ?? body;
+      const ident = body?.signedIn !== false ? identity(prof) : null;
+      if (ident) { user = localUserFor(ident, prof); ext = ident.id; }
     }
   } catch (e) {
     console.warn('[auth] could not reach sidelineff.com:', e.message);
+    Object.assign(state, { lastStatus: null, lastError: e.message, lastAt: Date.now() });
     if (hit) return hit.user ? q.byExt.get(hit.ext) || null : null; // keep people signed in through a blip
   }
   cache.set(key, { at: Date.now(), user: !!user, ext });
@@ -72,4 +88,14 @@ async function userFromCookie(cookie) {
   return user;
 }
 
-module.exports = { userFromCookie, identity };
+// Can this server reach sidelineff.com's login check? (shown on /api/health)
+async function selfCheck() {
+  try {
+    const res = await fetch(cfg.SIDELINE_URL + cfg.SIDELINE_PROFILE_PATH, { headers: { accept: 'application/json', 'user-agent': 'sideline-live' }, signal: AbortSignal.timeout(5000) });
+    const body = await res.json().catch(() => null);
+    Object.assign(state, { lastStatus: res.status, lastError: body && 'signedIn' in body ? null : 'unexpected answer', lastAt: Date.now() });
+  } catch (e) { Object.assign(state, { lastStatus: null, lastError: e.message, lastAt: Date.now() }); }
+  return state;
+}
+
+module.exports = { userFromCookie, identity, publicProfile, state, selfCheck };

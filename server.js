@@ -40,10 +40,14 @@ const q = {
   userByName: db.prepare('SELECT id FROM users WHERE name=?'),
   createUser: db.prepare('INSERT INTO users (name, token, credits, created_at) VALUES (?, ?, ?, ?)'),
 };
+// Visits that come through sidelineff.com/live (its proxy sends X-Forwarded-Prefix) always use
+// the sidelineff.com login, so people have one account and one profile on both sites.
+const viaMainSite = (req) => cfg.AUTH_MODE === 'sideline' || !!req.headers['x-forwarded-prefix'];
 async function auth(req, _res, next) {
   req.user = null;
   if (!req.path.startsWith('/api/')) return next();
-  if (cfg.AUTH_MODE === 'sideline') {
+  req.sideline = viaMainSite(req);
+  if (req.sideline) {
     try { req.user = await sidelineAuth.userFromCookie(req.headers.cookie); } catch { req.user = null; }
   } else {
     const h = req.headers.authorization || '';
@@ -53,9 +57,11 @@ async function auth(req, _res, next) {
   next();
 }
 app.use(auth);
-const signInMsg = cfg.AUTH_MODE === 'sideline' ? 'Sign in with your Sideline account to do that.' : 'Pick a username to do that.';
-const needUser = (req, res, next) => (req.user ? next() : res.status(401).json({ error: signInMsg }));
-const authInfo = { mode: cfg.AUTH_MODE, loginUrl: cfg.AUTH_MODE === 'sideline' ? cfg.SIDELINE_LOGIN_URL : null };
+const needUser = (req, res, next) => (req.user ? next() : res.status(401).json({ error: req.sideline ? 'Sign in with your Sideline account to do that.' : 'Pick a username to do that.' }));
+const authInfoFor = (req) => (req.sideline
+  ? { mode: 'sideline', loginUrl: req.headers['x-forwarded-prefix'] ? '/login' : cfg.SIDELINE_LOGIN_URL, returnParam: 'return_to', profileBase: req.headers['x-forwarded-prefix'] ? '/u/' : `${cfg.SIDELINE_URL}/u/` }
+  : { mode: 'local', loginUrl: null });
+const profileOf = (u) => { try { return u?.profile ? JSON.parse(u.profile) : null; } catch { return null; } };
 
 function tier(credits) {
   if (credits >= 3000) return 'Hall of Fame';
@@ -74,7 +80,7 @@ function rankOf(credits) {
 }
 
 app.post('/api/users', (req, res) => {
-  if (cfg.AUTH_MODE === 'sideline') return res.status(403).json({ error: 'Sign in with your Sideline account instead.' });
+  if (req.sideline) return res.status(403).json({ error: 'Sign in with your Sideline account instead.' });
   const name = String(req.body?.name || '').trim();
   if (!/^[A-Za-z0-9_]{3,20}$/.test(name)) return res.status(400).json({ error: 'Use 3–20 letters, numbers or underscores.' });
   if (isOffensive(name)) return res.status(400).json({ error: 'Pick a different username.' });
@@ -87,9 +93,9 @@ app.post('/api/users', (req, res) => {
 });
 
 app.get('/api/me', (req, res) => {
-  if (!req.user) return res.json({ user: null, auth: authInfo });
+  if (!req.user) return res.json({ user: null, auth: authInfoFor(req) });
   const u = req.user;
-  res.json({ user: { ...u, tier: tier(u.credits), rank: rankOf(u.credits), record: record(u.id) }, auth: authInfo });
+  res.json({ user: { id: u.id, name: u.name, credits: u.credits, profile: profileOf(u), tier: tier(u.credits), rank: rankOf(u.credits), record: record(u.id) }, auth: authInfoFor(req) });
 });
 
 // ---------- games + picks ----------
@@ -148,9 +154,9 @@ app.post('/api/picks', needUser, (req, res) => {
 });
 
 app.get('/api/leaderboard', (req, res) => {
-  const rows = db.prepare('SELECT id, name, credits FROM users ORDER BY credits DESC, id ASC LIMIT 100').all();
+  const rows = db.prepare('SELECT id, name, credits, profile FROM users ORDER BY credits DESC, id ASC LIMIT 100').all();
   res.json({
-    rows: rows.map((u, i) => ({ rank: i + 1, name: u.name, credits: u.credits, tier: tier(u.credits), record: record(u.id), me: req.user?.id === u.id })),
+    rows: rows.map((u, i) => ({ rank: i + 1, name: u.name, credits: u.credits, profile: profileOf(u), tier: tier(u.credits), record: record(u.id), me: req.user?.id === u.id })),
   });
 });
 
@@ -192,7 +198,7 @@ app.get('/api/players', (req, res) => {
   const week = weekOf(req), current = engine.currentWeek().week === week;
   const out = new Map();
   if (current) for (const p of slatePlayers()) {
-    out.set(String(p.id), { id: p.id, name: p.name, pos: p.pos, team: p.team, opp: p.opp, home: p.home, headshot: p.headshot || '',
+    out.set(String(p.id), { id: p.id, name: p.name, pos: p.pos, team: p.team, opp: p.opp, home: p.home, headshot: p.headshot || '', gsis: nflverse.get(p.id)?.gsis || null,
       ppg: p.ppg ?? null, ppr: 0, line: '', gameState: p.locked ? 'in' : 'pre', kickoff: p.kickoff || null });
   }
   for (const g of engine.listGames(week)) {
@@ -202,7 +208,7 @@ app.get('/api/players', (req, res) => {
       const team = nv?.team || t.team, prev = out.get(String(t.id)) || {};
       if (!posOf(nv, t) && !hasFantasy(t) && !prev.id) continue;
       out.set(String(t.id), { ...prev, id: t.id, name: nv?.name || t.name, pos: posOf(nv, t) || prev.pos || '', team,
-        headshot: nv?.headshot || t.headshot || prev.headshot || '', ppg: nv?.ppg ?? prev.ppg ?? null, ppr: t.ppr, line: t.line, s: t.s || {},
+        headshot: nv?.headshot || t.headshot || prev.headshot || '', gsis: nv?.gsis || prev.gsis || null, ppg: nv?.ppg ?? prev.ppg ?? null, ppr: t.ppr, line: t.line, s: t.s || {},
         gameState: g.state, kickoff: prev.kickoff ?? g.start ?? null,
         opp: prev.opp ?? (g.home.abbr === team ? g.away.abbr : g.home.abbr), home: prev.home ?? g.home.abbr === team });
     }
@@ -366,9 +372,9 @@ app.post('/api/plays/:id/vote', needUser, (req, res) => {
 });
 
 app.get('/api/plays/:id/comments', (req, res) => {
-  const rows = db.prepare(`SELECT c.id, c.body, c.created_at, u.name FROM comments c JOIN users u ON u.id=c.user_id
+  const rows = db.prepare(`SELECT c.id, c.body, c.created_at, u.name, u.profile FROM comments c JOIN users u ON u.id=c.user_id
     WHERE c.play_id=? ORDER BY c.id DESC LIMIT 200`).all(req.params.id);
-  res.json({ comments: rows });
+  res.json({ comments: rows.map((r) => ({ id: r.id, body: r.body, created_at: r.created_at, name: r.name, author: profileOf(r) })) });
 });
 
 const lastComment = new Map();
@@ -382,7 +388,7 @@ app.post('/api/plays/:id/comments', needUser, (req, res) => {
   lastComment.set(req.user.id, Date.now());
   const info = db.prepare('INSERT INTO comments (play_id, user_id, body, created_at) VALUES (?,?,?,?)').run(req.params.id, req.user.id, body, Date.now());
   persist.upsert('comments', { id: Number(info.lastInsertRowid) });
-  const comment = { id: info.lastInsertRowid, body, created_at: Date.now(), name: req.user.name };
+  const comment = { id: info.lastInsertRowid, body, created_at: Date.now(), name: req.user.name, author: profileOf(req.user) };
   engine.bus.emit('comment', { playId: req.params.id, comment });
   pushSocial(req.params.id);
   res.json({ comment });
@@ -534,6 +540,7 @@ window.__parse=req('parse');})();`);
 
 app.get('/api/health', (_req, res) => res.json({ ok: true, demo: cfg.DEMO, week: engine.currentWeek(), games: engine.listGames().length, seasonGames: engine.games.size,
   plays: db.prepare('SELECT COUNT(*) n FROM plays').get().n, sync: engine.sync,
+  sidelineLogin: { status: sidelineAuth.state.lastStatus, error: sidelineAuth.state.lastError },
   saved: persist.enabled ? { restored: persist.state.restored, pending: persist.state.pending, failed: persist.state.failed } : null, players: nflverse.state.byEspn.size, clients: clients.size }));
 
 // The page itself. When another site serves this app under a path (sidelineff.com/live)
@@ -590,6 +597,7 @@ process.on('SIGTERM', async () => {
   cleanUpOffensive();
   nflverse.start();
   engine.start();
+  if (!cfg.DEMO) sidelineAuth.selfCheck().then((st) => console.log(`[auth] sidelineff.com login check: ${st.lastStatus || st.lastError}`));
   app.listen(cfg.PORT, () => console.log(`Sideline Live on http://localhost:${cfg.PORT}${cfg.DEMO ? '  (DEMO MODE)' : ''}`));
 
   // Free hosts (like Render) put the site to sleep after 15 minutes without visitors, which

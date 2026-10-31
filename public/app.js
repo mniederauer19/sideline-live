@@ -165,9 +165,27 @@
     renderMe();
     loadMyLineupIds();
   }
+  // ---------- sidelineff.com profiles: same avatar, name color, team, level and badge ----------
+  const profileUrl = (username) => (S.auth?.profileBase ? `${S.auth.profileBase}${encodeURIComponent(username)}` : null);
+  function avatarHtml(u, size = 28) {
+    const a = u?.avatar, st = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px`;
+    if (a?.kind === 'upload' && a.url) return `<span class="ua" style="${st}"><img src="${esc(a.url)}" alt="" width="${size}" height="${size}" loading="lazy"></span>`;
+    if (a?.kind === 'team' && a.value) return `<span class="ua ua-team" style="${st}">${tlogo(a.value)}</span>`;
+    return `<span class="ua ua-ini" style="${st};background:${esc(a?.value || '#8b8476')}" aria-hidden="true">${esc(String(u?.username || u?.name || '?').replace(/_/g, '').charAt(0).toUpperCase())}</span>`;
+  }
+  // "username [team] Lv 3 [Badge]", linking to their public profile on sidelineff.com
+  function userTag(u, fallbackName, { link = true } = {}) {
+    if (!u?.username) return `<b class="un-plain">${esc(fallbackName || 'player')}</b>`;
+    const url = link ? profileUrl(u.username) : null;
+    const inner = `<b style="${u.color ? `color:${esc(u.color)}` : ''}">${esc(u.username)}</b>${u.team ? `<span class="un-team">${tlogo(u.team)}</span>` : ''}${u.level != null ? `<span class="un-lvl" title="Level ${esc(u.level)}${u.title ? ` · ${esc(u.title)}` : ''}">Lv ${esc(u.level)}</span>` : ''}${u.shown?.label ? `<span class="un-badge">${esc(u.shown.label)}</span>` : ''}`;
+    return url ? `<a class="un un-link" href="${esc(url)}" title="See ${esc(u.username)}'s profile">${inner}</a>` : `<span class="un">${inner}</span>`;
+  }
+
   function renderMe() {
     const b = $('#meBtn');
-    b.innerHTML = S.me ? `<span class="nm">${esc(S.me.name)}</span><b>${S.me.credits.toLocaleString()}</b>` : S.auth?.mode === 'sideline' ? 'Sign in' : 'Join free';
+    const pr = S.me?.profile;
+    b.classList.toggle('has-profile', !!pr);
+    b.innerHTML = S.me ? `${pr ? avatarHtml(pr, 24) : ''}<span class="nm">${esc(pr?.username || S.me.name)}</span><b>${S.me.credits.toLocaleString()}</b>` : S.auth?.mode === 'sideline' ? 'Sign in' : 'Join free';
     b.title = S.me ? `${S.me.name}: ${S.me.tier}, rank #${S.me.rank}` : 'Pick a username';
   }
   async function loadMyLineupIds() {
@@ -182,8 +200,10 @@
     if (S.me) return true;
     if (S.auth?.mode === 'sideline') {
       const join = S.auth.loginUrl.includes('?') ? '&' : '?';
-      const url = `${S.auth.loginUrl}${join}next=${encodeURIComponent(location.href)}`;
-      const signup = `${S.auth.loginUrl}${join}mode=signup&next=${encodeURIComponent(location.href)}`;
+      const back = S.auth.loginUrl.startsWith('/') ? location.pathname + location.search + location.hash : location.href;
+      const param = S.auth.returnParam || 'next';
+      const url = `${S.auth.loginUrl}${join}${param}=${encodeURIComponent(back)}`;
+      const signup = `${S.auth.loginUrl}${join}mode=signup&${param}=${encodeURIComponent(back)}`;
       openSheet('Sign in', `
         <p class="intro">Use your sidelineff.com account. Your picks, credits and lineups follow you on both sites.</p>
         <div class="field"><a class="btn" href="${esc(url)}">Sign in with Sideline</a></div>
@@ -1005,8 +1025,38 @@
       const items = plays.slice().reverse().map((p) => { const x = p.players.find((y) => String(y.id) === String(pid)); const v = x ? adj(x) : 0; run += v; return { p, v, run }; }).reverse();
       const total = row ? fpts(row) : run;
       $('#sheetBody').innerHTML = `<div class="pl-head">${face(info)}<div><div class="label">${esc([info.pos, info.team].filter(Boolean).join(' · '))}${row?.inj ? ` · <span class="inj">${esc(row.inj)}</span>` : ''}</div><div class="pl-total"><b>${fmt(total)}</b> ${unit()} this week</div><div class="sub">${esc(row?.line || '')}</div></div></div>
-        ${items.length ? `<div class="pl-plays">${items.map(({ p, v, run: r }) => `<button class="pl-play" data-act="comments" data-id="${esc(p.id)}"><span class="q">Q${p.period} ${esc(p.clock)}</span><span class="h">${esc(p.headline)}</span><b class="${v < 0 ? 'minus' : v === 0 ? 'zero' : ''}">${signed(v, 1)}</b><small>${fmt(r)}</small></button>`).join('')}</div>` : '<p class="rules">No plays yet this week.</p>'}`;
+        ${items.length ? `<div class="pl-plays">${items.map(({ p, v, run: r }) => `<button class="pl-play" data-act="comments" data-id="${esc(p.id)}"><span class="q">Q${p.period} ${esc(p.clock)}</span><span class="h">${esc(p.headline)}</span><b class="${v < 0 ? 'minus' : v === 0 ? 'zero' : ''}">${signed(v, 1)}</b><small>${fmt(r)}</small></button>`).join('')}</div>` : '<p class="rules">No plays yet this week.</p>'}
+        <div id="pcBox"></div>`;
+      const gsis = row?.gsis || me?.gsis;
+      if (gsis && onMainSite()) loadPlayerComments(gsis, info.name);
     } catch (e) { $('#sheetBody').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+
+  // The same player comments as sidelineff.com's player pages (read and posted on the main site)
+  async function loadPlayerComments(gsis, name) {
+    const box = $('#pcBox'); if (!box) return;
+    box.innerHTML = '<div class="pc-head"><span class="label">Comments on sidelineff.com</span></div><p class="rules">Loading…</p>';
+    let d;
+    try { d = await fetch(`/api/player-comments?player=${encodeURIComponent(gsis)}`, { cache: 'no-store' }).then((r) => r.json()); } catch { box.innerHTML = ''; return; }
+    if (!$('#pcBox')) return;
+    const list = (d.comments || []).map((c) => `<div class="cmt">${avatarHtml(c.author, 30)}<div><div class="by">${userTag(c.author, c.name)}<span>${ago(c.at)}</span></div>${c.parent ? `<div class="pc-reply">↳ ${esc(c.parent.name)}: ${esc(String(c.parent.body || '').slice(0, 80))}</div>` : ''}<p>${esc(c.body)}</p></div></div>`).join('');
+    const form = d.signedIn
+      ? (d.me ? `<form class="cmt-form" id="pcForm"><input id="pcInp" maxlength="500" placeholder="Say something about ${esc(name)}" aria-label="Comment on ${esc(name)}"><button class="btn" type="submit">Post</button></form>`
+        : '<p class="rules">Pick a username on sidelineff.com to comment. <a href="/account">Set it up</a></p>')
+      : `<p class="rules"><a href="/login?return_to=${encodeURIComponent(location.pathname + location.hash)}">Sign in</a> to join the conversation.</p>`;
+    box.innerHTML = `<div class="pc-head"><span class="label">Comments on sidelineff.com</span><span class="sub">Same thread as ${esc(name)}'s page on the main site</span></div>${form}<div id="pcList">${list || '<p class="rules" id="pcNone">No comments yet. Start the thread.</p>'}</div>`;
+    const f = $('#pcForm');
+    if (f) f.onsubmit = async (e) => {
+      e.preventDefault();
+      const body = $('#pcInp').value.trim(); if (!body) return;
+      try {
+        const r = await fetch('/api/player-comments', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ playerId: gsis, body, replyTo: null }) });
+        const n = await r.json();
+        if (!r.ok || !n.comment) return toast(n.error || 'Could not post.');
+        $('#pcInp').value = ''; $('#pcNone')?.remove();
+        $('#pcList').insertAdjacentHTML('afterbegin', `<div class="cmt">${avatarHtml(n.comment.author, 30)}<div><div class="by">${userTag(n.comment.author, n.comment.name)}<span>now</span></div><p>${esc(n.comment.body)}</p></div></div>`);
+      } catch { toast('Could not post. Check your connection.'); }
+    };
   }
 
   // ---------- score alerts for your players ----------
@@ -1030,7 +1080,7 @@
     const r = await api('/api/leaderboard');
     view.innerHTML = `${pageHead('Season · free picks', 'Ranks', 'Ranked by credits<br>Everyone starts with 1,000')}
       <table class="box ranks"><thead><tr><th style="width:44px">#</th><th>Player</th><th class="num">Record</th><th class="num">Credits</th></tr></thead><tbody>
-      ${r.rows.map((u) => `<tr class="${u.me ? 'me' : ''}"><td>${u.rank}</td><td><div class="nm">${esc(u.name)}</div><div class="tier">${esc(u.tier)}</div></td><td class="num">${u.record.w}-${u.record.l}${u.record.p ? `-${u.record.p}` : ''}</td><td class="num pp">${u.credits.toLocaleString()}</td></tr>`).join('')
+      ${r.rows.map((u) => `<tr class="${u.me ? 'me' : ''}"><td>${u.rank}</td><td><div class="nm rk-who">${u.profile ? avatarHtml(u.profile, 26) : ''}${u.profile ? userTag(u.profile, u.name) : esc(u.name)}</div><div class="tier">${esc(u.tier)}</div></td><td class="num">${u.record.w}-${u.record.l}${u.record.p ? `-${u.record.p}` : ''}</td><td class="num pp">${u.credits.toLocaleString()}</td></tr>`).join('')
         || '<tr><td colspan="4" class="sub">No one has joined yet.</td></tr>'}
       </tbody></table>`;
   }
@@ -1103,7 +1153,7 @@
     } catch (e) { $('#sheetBody').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
   }
   function cmtHtml(c) {
-    return `<div class="cmt"><div class="by">${esc(c.name)}<span>${ago(c.created_at)}</span></div><p>${esc(c.body)}</p></div>`;
+    return `<div class="cmt">${c.author ? avatarHtml(c.author, 30) : ''}<div><div class="by">${userTag(c.author, c.name)}<span>${ago(c.created_at)}</span></div><p>${esc(c.body)}</p></div></div>`;
   }
 
   // ---------- social updates ----------
@@ -1286,7 +1336,15 @@
   $('#customizeBtn').addEventListener('click', openCustomize);
   $('#themeBtn').addEventListener('click', () => setSetting('theme', html.dataset.theme === 'light' ? 'dark' : 'light'));
   applySettings();
-  $('#meBtn').addEventListener('click', () => { if (!S.me) requireUser(); else location.hash = '#/ranks'; });
+  $('#meBtn').addEventListener('click', () => {
+    if (!S.me) return requireUser();
+    const pr = S.me.profile;
+    if (!pr) { location.hash = '#/ranks'; return; }
+    openSheet('Your account', `<div class="acct-card">${avatarHtml(pr, 56)}<div>${userTag(pr, S.me.name)}${pr.title ? `<div class="sub">${esc(pr.title)}</div>` : ''}</div></div>
+      <div class="acct-stats"><div><b>${S.me.credits.toLocaleString()}</b><span>Credits</span></div><div><b>#${S.me.rank}</b><span>${esc(S.me.tier)}</span></div><div><b>${S.me.record.w}-${S.me.record.l}${S.me.record.p ? `-${S.me.record.p}` : ''}</b><span>Picks record</span></div></div>
+      <div class="acct-links">${profileUrl(pr.username) ? `<a class="btn" href="${esc(profileUrl(pr.username))}">Your public profile</a>` : ''}<a class="btn ghost" href="/account">Edit profile</a><a class="btn ghost" href="#/ranks" data-close>Ranks</a></div>
+      <p class="rules">Same account and profile as sidelineff.com. Change your photo, color or badge there and it shows here too.</p>`);
+  });
 
   function rerenderActions(id) {
     const p = findPlay(id);
