@@ -8,6 +8,7 @@ const BASE = 'https://github.com/nflverse/nflverse-data/releases/download';
 const URLS = {
   players: `${BASE}/players/players.csv`,
   weekly: `${BASE}/stats_player/stats_player_week_${SEASON}.csv`,
+  snaps: `${BASE}/snap_counts/snap_counts_${SEASON}.csv`,
 };
 
 // nflverse team codes -> ESPN team codes
@@ -68,10 +69,11 @@ function salaryFor(pos, seasonPpg, last3Ppg) {
 }
 
 async function load() {
-  const [pText, wText] = await Promise.all([download('players'), download('weekly')]);
+  const [pText, wText, sText] = await Promise.all([download('players'), download('weekly'), download('snaps')]);
   if (!pText || !wText) { console.warn('[nflverse] no data yet'); return; }
 
   const gsisToEspn = new Map();
+  const pfrToGsis = new Map();
   const bio = new Map();
   const kickers = new Map();
   for (const p of parseCSV(pText)) {
@@ -82,6 +84,7 @@ async function load() {
         kickers.set(t, { id: p.espn_id, name: p.display_name, short: p.short_name || `${p.first_name[0]}.${p.last_name}`, team: t, pos: 'K', headshot: p.headshot, lastSeason: Number(p.last_season) });
       }
     }
+    if (p.pfr_id && p.gsis_id) pfrToGsis.set(p.pfr_id, p.gsis_id);
     if (p.espn_id && p.gsis_id) {
       gsisToEspn.set(p.gsis_id, p.espn_id);
       bio.set(p.gsis_id, p);
@@ -118,6 +121,16 @@ async function load() {
     if (wk >= a.lastWeek) { a.lastWeek = wk; a.team = r.team; a.headshot = r.headshot_url || a.headshot; }
   }
 
+  // Share of the offense's snaps each week (official counts, posted after each game).
+  const snaps = new Map(); // gsis -> [{ week, pct }]
+  for (const r of sText ? parseCSV(sText) : []) {
+    if (r.game_type !== 'REG' && r.game_type !== 'POST') continue;
+    const g = pfrToGsis.get(r.pfr_player_id);
+    if (!g || !(n(r.offense_snaps) > 0)) continue;
+    if (!snaps.has(g)) snaps.set(g, []);
+    snaps.get(g).push({ week: Number(r.week), pct: Math.round(n(r.offense_pct) * 100) });
+  }
+
   const byEspn = new Map();
   for (const a of agg.values()) {
     const espnId = gsisToEspn.get(a.gsis);
@@ -144,6 +157,7 @@ async function load() {
       carriesPg: +(a.carries / games).toFixed(1),
       adot: a.tgt ? +(a.airYds / a.tgt).toFixed(1) : 0,
       seasonTds: a.tds,
+      snaps: (snaps.get(a.gsis) || []).sort((x, y) => x.week - y.week),
       seasonRec: a.rec,
       seasonPpr: +total.toFixed(1),
       weeks: a.weeks,

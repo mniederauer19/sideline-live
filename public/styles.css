@@ -869,3 +869,12 @@ html[data-look="modern"] .play.is-mine:not(.is-td) { padding-left: 22px; }
   .tp-table .gp { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .tp-live i { animation: none; } }
+.tp-bar-r { display: flex; gap: 10px; flex-wrap: wrap; }
+.tp-share { display: inline-grid; grid-template-columns: auto 54px; grid-template-rows: auto auto; column-gap: 8px; align-items: center; justify-items: end; }
+.tp-share b, .tp-pct { font: var(--stat-w) 20px/1 var(--stat); color: var(--gold); font-variant-numeric: tabular-nums; }
+.tp-share > i { width: 54px; height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; display: block; }
+.tp-share > i > i { display: block; height: 100%; background: var(--gold); }
+.tp-share small { grid-column: 1 / -1; color: var(--muted); font-size: 12px; margin-top: 3px; }
+.tp-sub { display: block; font-size: 12px; margin-top: 3px; }
+.tp-note { margin-top: 12px; }
+@media (max-width: 640px) { .tp-share { grid-template-columns: auto; } .tp-share > i { display: none; } .tp-usage th { white-space: normal; } }

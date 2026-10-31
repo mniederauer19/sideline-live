@@ -209,6 +209,13 @@ app.get('/api/players', (req, res) => {
   res.json({ week, players });
 });
 
+// Snap share (official counts, through the week before the one shown): last game, last 3 and season average.
+function usage(p, week) {
+  const sn = (p.snaps || []).filter((x) => x.week < week);
+  const avg = (a) => (a.length ? Math.round(a.reduce((s, x) => s + x.pct, 0) / a.length) : null);
+  return { snapLast: sn.length ? sn[sn.length - 1].pct : null, snapLastWeek: sn.length ? sn[sn.length - 1].week : null, snap3: avg(sn.slice(-3)), snapSeason: avg(sn), seasonTgtShare: p.tgtShare ?? null };
+}
+
 // One team's page: everyone's fantasy points this week, plus season totals (NFL teams, from nflverse).
 app.get('/api/teams/:abbr', (req, res) => {
   const abbr = String(req.params.abbr || '').toUpperCase(), week = weekOf(req);
@@ -219,7 +226,8 @@ app.get('/api/teams/:abbr', (req, res) => {
     const done = p.weeks.filter((w) => w.week < week);
     out.set(String(p.id), { id: p.id, name: p.name, pos: p.pos, team: abbr, headshot: p.headshot || '', ppr: 0, line: '', s: {},
       // Season so far, before the week being shown (that week's points come from the live box score).
-      played: false, games: done.length, seasonPpr: +done.reduce((a, w) => a + w.ppr, 0).toFixed(1), seasonRec: done.reduce((a, w) => a + (w.rec || 0), 0) });
+      played: false, games: done.length, seasonPpr: +done.reduce((a, w) => a + w.ppr, 0).toFixed(1), seasonRec: done.reduce((a, w) => a + (w.rec || 0), 0),
+      ...usage(p, week) });
   }
   if (g) for (const t of engine.boxFor(g.id).values()) {
     if (t.team !== abbr && nflverse.get(t.id)?.team !== abbr) continue;
@@ -228,10 +236,18 @@ app.get('/api/teams/:abbr', (req, res) => {
     out.set(String(t.id), { ...prev, id: t.id, name: nv?.name || t.name, pos: nv?.pos || prev.pos || (g.extra ? '' : 'K'), team: abbr,
       headshot: nv?.headshot || t.headshot || prev.headshot || '', ppr: t.ppr, line: t.line, s: t.s || {}, played: true });
   }
+  // Live usage this game: each player's share of the team's targets and carries.
+  const tot = { tgt: 0, car: 0 };
+  for (const p of out.values()) if (p.played) { tot.tgt += p.s.tgt || 0; tot.car += p.s.car || 0; }
+  for (const p of out.values()) {
+    p.tgt = p.s?.tgt || 0; p.car = p.s?.car || 0;
+    p.tgtShare = tot.tgt ? Math.round(p.tgt / tot.tgt * 100) : null;
+    p.carShare = tot.car ? Math.round(p.car / tot.car * 100) : null;
+  }
   const players = [...out.values()].filter((p) => p.played || p.seasonPpr > 0)
     .sort((a, b) => (b.seasonPpr + b.ppr) - (a.seasonPpr + a.ppr));
   const others = engine.listGames(week).flatMap((x) => [x.home, x.away]).map((t) => t.abbr).filter((x) => x !== abbr).sort();
-  res.json({ week, abbr, team, game: g, college: !!g?.extra, players, others });
+  res.json({ week, abbr, team, game: g, college: !!g?.extra, players, others, teamTgt: tot.tgt, teamCar: tot.car });
 });
 
 // ---------- feed ----------

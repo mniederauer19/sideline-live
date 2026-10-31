@@ -770,7 +770,7 @@
   }
 
   // ---------- one team ----------
-  S.tm = { pos: 'ALL', sort: 'season' };
+  S.tm = { pos: 'ALL', sort: 'season', view: 'points' };
   function currentTeam() { const m = location.hash.match(/^#\/team\/([^/]+)/); return m ? decodeURIComponent(m[1]).toUpperCase() : null; }
   async function showTeam(abbr) {
     view.innerHTML = '<div class="empty">Loading team…</div>';
@@ -798,13 +798,28 @@
     const teamWk = rows.reduce((a, p) => a + p.wk, 0);
     const pos = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K'].filter((x) => x === 'ALL' || d.players.some((p) => p.pos === x));
     const sortBtn = (k, l) => `<button class="pill ${S.tm.sort === k ? 'on' : ''}" data-act="tmsort" data-v="${k}">${l}</button>`;
+    const viewBtn = (k, l) => `<button class="pill ${S.tm.view === k ? 'on' : ''}" data-act="tmview" data-v="${k}">${l}</button>`;
+    const usage = S.tm.view === 'usage';
+    // Usage view: most involved this game first, then by recent snap share.
+    if (usage) rows.sort((a, b) => ((b.tgtShare || 0) + (b.carShare || 0)) - ((a.tgtShare || 0) + (a.carShare || 0)) || (b.snap3 || 0) - (a.snap3 || 0));
+    const share = (n, pct, of) => n || pct ? `<span class="tp-share"><b>${pct ?? 0}%</b><i><i style="width:${Math.min(100, pct || 0)}%"></i></i><small>${n} of ${of}</small></span>` : '<span class="sub">–</span>';
+    const pctCell = (v, sub) => v != null ? `<b class="tp-pct">${v}%</b>${sub ? `<small class="sub tp-sub">${sub}</small>` : ''}` : '<span class="sub">–</span>';
+    const started = g && g.state !== 'pre';
+    const usageTable = () => `<div class="tp-scroll"><table class="box players tp-table tp-usage"><thead><tr><th>Player</th><th class="num">Target share</th><th class="num">Rush share</th>${d.college ? '' : '<th class="num">Snaps last game</th><th class="num">Snaps · 3 games</th><th class="num">Season tgt share</th>'}</tr></thead><tbody>
+        ${rows.map((p) => `<tr class="${S.myLineupIds.has(String(p.id)) || S.myFantasyIds.has(String(p.id)) ? 'mine' : ''}">
+          <td><div class="nm">${face(p, 'face sm')}<span><button class="plink" data-act="player" data-pid="${esc(p.id)}">${esc(p.name)}</button><span class="pos">${esc(p.pos || '')}</span></span></div></td>
+          <td class="num">${started ? share(p.tgt, p.tgtShare, d.teamTgt) : '<span class="sub">–</span>'}</td>
+          <td class="num">${started ? share(p.car, p.carShare, d.teamCar) : '<span class="sub">–</span>'}</td>
+          ${d.college ? '' : `<td class="num">${pctCell(p.snapLast, p.snapLastWeek ? `Wk ${p.snapLastWeek}` : '')}</td><td class="num">${pctCell(p.snap3)}</td><td class="num">${pctCell(p.seasonTgtShare != null ? Math.round(p.seasonTgtShare) : null)}</td>`}</tr>`).join('')}
+      </tbody></table></div>
+      <p class="rules tp-note">Target and rush shares update live with each play. ${d.college ? '' : 'Snap counts are official NFL numbers, posted the day after each game, so they run through last week.'}</p>`;
     view.innerHTML = `<div class="tp-head" style="--tc:${esc(t.color || '#33415a')}">
         <div class="tp-id">${tlogo(d.abbr)}<div><div class="label">${esc(weekLabel())}${d.college ? ' · College' : ''}</div><h1>${esc(t.name || d.abbr)}</h1><div class="sub">${esc(t.record || '')}</div></div></div>
         <div class="tp-side">${gameLine}<div class="tp-total"><b>${fmt(teamWk)}</b> ${unit()} this week</div><div class="fmt-row">${fmtSeg()}</div></div>
       </div>
       <div class="tp-bar"><div class="pills seg" id="tmPos">${pos.map((x) => `<button class="pill ${S.tm.pos === x ? 'on' : ''}" data-p="${x}">${x === 'ALL' ? 'All' : x}</button>`).join('')}</div>
-        ${d.college ? '' : `<div class="pills seg">${sortBtn('season', 'Season')}${sortBtn('week', 'This week')}</div>`}</div>
-      ${rows.length ? `<div class="tp-scroll"><table class="box players tp-table"><thead><tr><th>Player</th><th class="num">${d.college ? unit() : 'This week'}</th>${d.college ? '' : '<th class="num">Season</th><th class="num">Per game</th><th class="num gp">GP</th>'}</tr></thead><tbody>
+        <div class="tp-bar-r"><div class="pills seg">${viewBtn('points', 'Points')}${viewBtn('usage', 'Usage')}</div>${d.college || usage ? '' : `<div class="pills seg">${sortBtn('season', 'Season')}${sortBtn('week', 'This week')}</div>`}</div></div>
+      ${rows.length && usage ? usageTable() : rows.length ? `<div class="tp-scroll"><table class="box players tp-table"><thead><tr><th>Player</th><th class="num">${d.college ? unit() : 'This week'}</th>${d.college ? '' : '<th class="num">Season</th><th class="num">Per game</th><th class="num gp">GP</th>'}</tr></thead><tbody>
         ${rows.map((p) => `<tr class="${S.myLineupIds.has(String(p.id)) || S.myFantasyIds.has(String(p.id)) ? 'mine' : ''}">
           <td><div class="nm">${face(p, 'face sm')}<span><button class="plink" data-act="player" data-pid="${esc(p.id)}">${esc(p.name)}</button><span class="pos">${esc(p.pos || '')}</span></span></div>
           <div class="sub">${esc(p.line || (p.played ? '' : g && g.state === 'pre' ? 'Not started' : g ? 'No stats' : ''))}</div></td>
@@ -957,6 +972,7 @@
       switch (act) {
         case 'go': location.hash = t.dataset.href; break;
         case 'tmsort': S.tm.sort = t.dataset.v; drawTeam(); break;
+        case 'tmview': S.tm.view = t.dataset.v; drawTeam(); break;
         case 'week': selectWeek(Number(t.dataset.w)); break;
         case 'cz': setSetting(t.dataset.k, t.dataset.v); break;
         case 'join': e.preventDefault(); requireUser(); break;
