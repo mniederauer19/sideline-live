@@ -54,6 +54,10 @@ async function refreshScoreboard() {
     for (const ev of evs) saveGame(espn.normalizeEvent(ev));
   }
   bus.emit('games', listGames());
+  // Something changed in a live game: fetch its plays right away instead of waiting for the next check
+  for (const g of listGames()) {
+    if (g.state === 'in' && changeKey(g) !== getGS(g.id).lastKey) pollGame(g);
+  }
 }
 
 // Games for one week (defaults to the current NFL week)
@@ -385,7 +389,7 @@ function processSummaryTx(game, summary, opts, gs) {
 }
 
 // What the scoreboard says about a game right now; when it changes, something happened
-const changeKey = (g) => [g.state, g.period, g.clock, g.home?.score, g.away?.score, g.lastPlayId, g.downDistance, g.possession].join('|');
+const changeKey = (g) => [g.state, g.period, g.home?.score, g.away?.score, g.lastPlayId, g.downDistance, g.possession].join('|');
 
 async function pollGame(game) {
   const gs = getGS(game.id);

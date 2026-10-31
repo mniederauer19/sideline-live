@@ -10,7 +10,7 @@ module.exports = {
   LIVE_POLL_MS: num(process.env.LIVE_POLL_MS, 3000),
   // While games are live: how often the scoreboard is checked for changes (ms), and the
   // longest a live game goes without a full refresh even if nothing seems to change (ms).
-  LIVE_SCOREBOARD_MS: num(process.env.LIVE_SCOREBOARD_MS, 5000),
+  LIVE_SCOREBOARD_MS: num(process.env.LIVE_SCOREBOARD_MS, 2000),
   LIVE_MAX_GAP_MS: num(process.env.LIVE_MAX_GAP_MS, 45000),
   // How often the scoreboard (schedule, scores, Vegas lines) is refreshed (ms).
   SCOREBOARD_POLL_MS: num(process.env.SCOREBOARD_POLL_MS, 30000),

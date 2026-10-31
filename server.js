@@ -8,6 +8,7 @@ const engine = require('./src/engine');
 const sidelineAuth = require('./src/sideline-auth');
 const persist = require('./src/persist');
 const { isOffensive } = require('./src/moderation');
+const sleeper = require('./src/sleeper');
 
 const app = express();
 app.set('trust proxy', true); // behind Railway / Cloudflare
@@ -200,13 +201,23 @@ app.get('/api/players', (req, res) => {
       if (!nv && !t.name) continue;
       const team = nv?.team || t.team, prev = out.get(String(t.id)) || {};
       out.set(String(t.id), { ...prev, id: t.id, name: nv?.name || t.name, pos: nv?.pos || prev.pos || 'K', team,
-        headshot: nv?.headshot || t.headshot || prev.headshot || '', ppg: nv?.ppg ?? prev.ppg ?? null, ppr: t.ppr, line: t.line,
+        headshot: nv?.headshot || t.headshot || prev.headshot || '', ppg: nv?.ppg ?? prev.ppg ?? null, ppr: t.ppr, line: t.line, s: t.s || {},
         gameState: g.state, kickoff: prev.kickoff ?? g.start ?? null,
         opp: prev.opp ?? (g.home.abbr === team ? g.away.abbr : g.home.abbr), home: prev.home ?? g.home.abbr === team });
     }
   }
   const players = [...out.values()].sort((a, b) => b.ppr - a.ppr || (b.ppg || 0) - (a.ppg || 0));
+  for (const p of players) { const inj = sleeper.state.injuries[String(p.id)]; if (inj) p.inj = inj; }
   res.json({ week, players });
+});
+
+// Sleeper player IDs -> ESPN IDs for the ones asked about (for importing a Sleeper team)
+app.get('/api/sleeper/map', async (req, res) => {
+  await sleeper.ensure();
+  const ids = String(req.query.ids || '').split(',').map((x) => x.trim()).filter(Boolean).slice(0, 400);
+  const map = {};
+  for (const id of ids) if (sleeper.state.map[id]) map[id] = sleeper.state.map[id];
+  res.json({ map, ready: sleeper.state.count > 0 });
 });
 
 // ---------- feed ----------
@@ -253,6 +264,12 @@ app.get('/api/feed', (req, res) => {
     args.push(...ids.map((id) => `%,${id},%`));
   }
   if (req.query.player) { where.push('player_ids LIKE ?'); args.push(`%,${req.query.player},%`); }
+  if (req.query.players) {
+    const ids = String(req.query.players).split(',').map((x) => x.replace(/[^0-9]/g, '')).filter(Boolean).slice(0, 40);
+    if (!ids.length) return res.json({ plays: [], next: null });
+    where.push(`(${ids.map(() => 'player_ids LIKE ?').join(' OR ')})`);
+    args.push(...ids.map((id) => `%,${id},%`));
+  }
   if (req.query.before) {
     const [ts, seq] = String(req.query.before).split(':').map(Number);
     where.push('(ts < ? OR (ts = ? AND seq < ?))'); args.push(ts, ts, seq);
@@ -523,6 +540,7 @@ process.on('SIGTERM', async () => {
   cleanUpOffensive();
   nflverse.start();
   engine.start();
+  sleeper.ensure();
   app.listen(cfg.PORT, () => console.log(`Sideline Live on http://localhost:${cfg.PORT}${cfg.DEMO ? '  (DEMO MODE)' : ''}`));
 
   // Free hosts (like Render) put the site to sleep after 15 minutes without visitors, which

@@ -7,7 +7,7 @@
   // If the page is served from a different host than the API, set window.SIDELINE_API.
   const API = (window.SIDELINE_API ?? new URL('.', location.href).pathname).replace(/\/$/, '');
   const EMOJIS = ['🔥', '😂', '😭', '🤯', '💀', '👏'];
-  const FILTERS = [['all', 'All'], ['scoring', 'Scoring'], ['ppr5', '5+ PPR'], ['ppr10', '10+ PPR'], ['big', 'Big plays'], ['mine', 'My lineup']];
+  const FILTERS = [['all', 'All'], ['team', 'My fantasy team'], ['scoring', 'Scoring'], ['ppr5', '5+ PPR'], ['ppr10', '10+ PPR'], ['big', 'Big plays'], ['mine', 'My lineup']];
 
   const S = {
     token: (() => { try { return localStorage.getItem('sl_token'); } catch { return null; } })(),
@@ -36,8 +36,43 @@
   const view = $('#view');
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const fmt = (n, d = 1) => (Math.round(n * 10 ** d) / 10 ** d).toFixed(d);
-  const signed = (n, d = 1) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${fmt(Math.abs(n), d)}`;
+  const signed = (n, d = 1) => { const r = Number(fmt(Math.abs(n), d)); return `${r === 0 ? '' : n > 0 ? '+' : '−'}${fmt(Math.abs(n), d)}`; };
   const money = (n) => `$${Number(n).toLocaleString()}`;
+  const ls = { get: (k) => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch { /* private mode */ } } };
+
+  // ---------- scoring format (PPR, half PPR, standard) ----------
+  const FORMATS = { ppr: { rec: 1, label: 'PPR', name: 'Full PPR' }, half: { rec: 0.5, label: 'Half', name: 'Half PPR' }, std: { rec: 0, label: 'Std', name: 'Standard' } };
+  S.fmt = FORMATS[ls.get('sl-scoring')] ? ls.get('sl-scoring') : 'ppr';
+  const recVal = () => FORMATS[S.fmt].rec;
+  const unit = () => FORMATS[S.fmt].label === 'PPR' ? 'PPR' : FORMATS[S.fmt].label === 'Half' ? 'Half PPR' : 'Pts';
+  // a player's points on one play, in the chosen format
+  const adj = (pl) => (pl ? pl.ppr - (pl.stat?.rec || 0) * (1 - recVal()) : 0);
+  // a player's total today, in the chosen format (catches read from the game line)
+  const adjToday = (pl) => {
+    const today = pl.gamePpr ?? pl.ppr;
+    const m = /(\d+) rec\b/.exec(pl.gameLine || '');
+    return today - (m ? Number(m[1]) : 0) * (1 - recVal());
+  };
+  // a box-score total from raw stats, in the chosen format or a league's own settings
+  function fpts(row, sc) {
+    const s = row?.s;
+    if (!row) return 0;
+    if (!s || !Object.keys(s).length || row.pos === 'K') return sc ? row.ppr || 0 : (row.ppr || 0) - (s?.rec || 0) * (1 - recVal());
+    const g = (k, d) => (sc && sc[k] != null ? sc[k] : d);
+    const recPts = sc ? g('rec', 1) + (g(`bonus_rec_${String(row.pos).toLowerCase()}`, 0)) : recVal();
+    return (s.passYds || 0) * g('pass_yd', 0.04) + (s.passTd || 0) * g('pass_td', 4) + (s.int || 0) * g('pass_int', -2)
+      + (s.rushYds || 0) * g('rush_yd', 0.1) + (s.rushTd || 0) * g('rush_td', 6)
+      + (s.rec || 0) * recPts + (s.recYds || 0) * g('rec_yd', 0.1) + (s.recTd || 0) * g('rec_td', 6)
+      + (s.fumLost || 0) * g('fum_lost', -2) + (s.twoPt || 0) * 2 + (s.retTd || 0) * 6;
+  }
+  function fmtSeg() {
+    return `<span class="fmt-seg" role="radiogroup" aria-label="Scoring">${Object.entries(FORMATS).map(([k, f]) => `<button type="button" class="${S.fmt === k ? 'on' : ''}" data-act="fmt" data-v="${k}" role="radio" aria-checked="${S.fmt === k}" title="${f.name}">${f.label}</button>`).join('')}</span>`;
+  }
+
+  // ---------- your real fantasy team (Sleeper) ----------
+  S.sl = (() => { try { return JSON.parse(ls.get('sl-sleeper') || 'null'); } catch { return null; } })();
+  S.myFantasyIds = new Set((() => { try { return JSON.parse(ls.get('sl-sleeper-ids') || '[]'); } catch { return []; } })());
+  S.alerts = ls.get('sl-alerts') === '1';
 
   async function api(path, opts = {}) {
     const res = await fetch(API + path, {
@@ -260,7 +295,7 @@
       add('defensive TD', pl.ppr - out.reduce((a, [, v]) => a + v, 0));
       return out;
     }
-    if (st.rec) add(st.rec > 1 ? `${st.rec} catches` : 'catch', st.rec);
+    if (st.rec) add(st.rec > 1 ? `${st.rec} catches` : 'catch', st.rec * recVal());
     if (st.recYds) add(`${st.recYds} rec yd`, st.recYds * 0.1);
     if (st.recTd) add('TD catch', st.recTd * 6);
     if (st.passYds) add(`${st.passYds} pass yd`, st.passYds * 0.04);
@@ -282,20 +317,20 @@
     const parts = breakdown(pl);
     if (!parts.length) return '';
     const items = parts.map(([l, v]) => `<li class="${v < 0 ? 'minus' : ''}"><b>${signed(v, v % 1 && Math.abs(v * 10 % 1) > 0.01 ? 2 : 1)}</b>${esc(l)}</li>`).join('');
-    const total = parts.length > 1 ? `<li class="eq"><b>${signed(pl.ppr, 1)}</b>total</li>` : '';
+    const total = parts.length > 1 ? `<li class="eq"><b>${signed(adj(pl), 1)}</b>total</li>` : '';
     return `<ul class="breakdown" aria-label="How the points add up">${items}${total}</ul>`;
   }
   // Running total today vs the player's season average
   function paceHtml(pl) {
     if (!pl || pl.pos === 'DST') return '';
-    const today = pl.gamePpr ?? pl.ppr;
+    const today = adjToday(pl);
     const avg = pl.season?.games ? pl.season.ppg : null;
     const extra = [];
     if (pl.season && ['WR', 'TE', 'RB'].includes(pl.pos) && pl.season.tgtShare) extra.push(`${fmt(pl.season.tgtShare, 0)}% target share`);
     if (pl.season && ['WR', 'TE'].includes(pl.pos) && pl.season.adot) extra.push(`${fmt(pl.season.adot)} aDOT`);
     const bar = avg ? `<div class="pace-bar" aria-hidden="true"><i style="width:${Math.max(0, Math.min(100, today / (avg * 2) * 100))}%"></i><em style="left:50%"></em></div>` : '';
-    const note = avg ? `<div class="pace-note"><b>${Math.round(today / avg * 100)}%</b> of his ${fmt(avg)} season average${extra.length ? ` · ${esc(extra.join(' · '))}` : ''}</div>` : '';
-    return `<div class="pace"><div class="pace-top"><span class="today">${fmt(today)}</span><span class="label">PPR today</span>${pl.gameLine ? `<span class="line">${esc(pl.gameLine)}</span>` : ''}</div>${bar}${note}</div>`;
+    const note = avg ? `<div class="pace-note"><b>${Math.round(today / avg * 100)}%</b> of his ${fmt(avg)} PPR season average${extra.length ? ` · ${esc(extra.join(' · '))}` : ''}</div>` : '';
+    return `<div class="pace"><div class="pace-top"><span class="today">${fmt(today)}</span><span class="label">${unit()} today</span>${pl.gameLine ? `<span class="line">${esc(pl.gameLine)}</span>` : ''}</div>${bar}${note}</div>`;
   }
   const chatIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4C6.8 4 3 7.3 3 11.2c0 2.2 1.2 4.1 3.2 5.4L5.5 20l4-2.1c.8.2 1.6.3 2.5.3 5.2 0 9-3.3 9-7S17.2 4 12 4z"/></svg>';
   function actions(p) {
@@ -341,8 +376,10 @@
     const label = `<span>${esc(from)} <em>→</em> ${esc(to)}</span><b class="${yards < 0 ? 'minus' : ''}">${yards > 0 ? '+' : ''}${yards} yd</b>`;
     return fieldBar({ start, end, off: p.offense, def: p.defense, loss: yards < 0, td: p.td, label });
   }
+  const isMine = (p) => p.players?.some((x) => S.myFantasyIds.has(String(x.id)));
   function badges(p) {
     const out = [];
+    if (isMine(p)) out.push('<span class="badge mine">Your team</span>');
     if (p.td) out.push('<span class="badge td">Touchdown</span>');
     if (p.kind === 'int' || p.players.some((x) => x.stat?.fumLost)) out.push('<span class="badge to">Turnover</span>');
     else if (p.explosive && !p.td) out.push('<span class="badge big">Big play</span>');
@@ -372,21 +409,22 @@
       return `<div class="play-mini" data-play="${esc(p.id)}"><span>${when}</span><b>${esc(p.headline)}</b><span>${esc(p.offense || '')}</span>
         <button class="cmt-btn" data-act="comments" data-id="${esc(p.id)}" aria-label="Comments">${chatIcon}${p.social?.comments || 0}</button></div>`;
     }
-    const pts = prim ? prim.ppr : 0;
+    const pts = prim ? Math.round(adj(prim) * 100) / 100 : 0;
     const cls = pts >= 10 ? 'boom' : pts < 0 ? 'neg' : pts === 0 ? 'zero' : '';
     const others = p.players.filter((x) => x !== prim);
     const meta = [when, p.downText ? esc(p.downText) : '', ago(p.ts)].filter(Boolean).map((x) => `<span>${x}</span>`).join('<span>·</span>') + badges(p);
     const who = prim
-      ? `<div class="who-row">${face(prim)}<div><h3 class="pname">${esc(prim.name)}<small>${esc([prim.pos, prim.team].filter(Boolean).join(' · '))}</small></h3><div class="headline ${p.td ? 'td' : ''}">${esc(p.headline)}</div></div></div>`
+      ? `<div class="who-row">${face(prim)}<div><h3 class="pname">${prim.id && prim.pos !== 'DST' ? `<button class="plink" data-act="player" data-pid="${esc(prim.id)}">${esc(prim.name)}</button>` : esc(prim.name)}<small>${esc([prim.pos, prim.team].filter(Boolean).join(' · '))}</small></h3><div class="headline ${p.td ? 'td' : ''}">${esc(p.headline)}</div></div></div>`
       : `<div class="who-row"><div><h3 class="pname">${esc(p.headline)}</h3></div></div>`;
     const also = others.length ? `<div class="also"><span class="label">Also on the play</span>${others.map((o) => {
-      const v = o.role === 'target' && !o.ppr ? '<b class="zero">target</b>' : `<b class="${o.ppr < 0 ? 'minus' : o.ppr === 0 ? 'zero' : ''}">${signed(o.ppr, 1)}</b>`;
-      return `<span>${esc(o.name)} ${v}${o.pos !== 'DST' && o.gamePpr != null ? ` <small>${fmt(o.gamePpr)} today</small>` : ''}</span>`;
+      const ov = adj(o);
+      const v = o.role === 'target' && !o.ppr ? '<b class="zero">target</b>' : `<b class="${ov < 0 ? 'minus' : ov === 0 ? 'zero' : ''}">${signed(ov, 1)}</b>`;
+      return `<span>${o.id && o.pos !== 'DST' ? `<button class="plink" data-act="player" data-pid="${esc(o.id)}">${esc(o.name)}</button>` : esc(o.name)} ${v}${o.pos !== 'DST' && o.gamePpr != null ? ` <small>${fmt(adjToday(o))} today</small>` : ''}</span>`;
     }).join('')}</div>` : '';
     const teamColor = prim?.team ? teamInfo(prim.team).color : '';
     const spot = pts >= 10 && teamColor ? ` spot" style="--team:${esc(teamColor)}` : '';
-    return `<article class="play ${fresh ? 'fresh' : ''} ${p.td ? 'is-td' : ''}${spot}" data-play="${esc(p.id)}">
-      <div class="ppr ${cls}" title="${esc(prim?.name || 'No one')} scored ${signed(pts, 2)} PPR on this play"><span class="v">${signed(pts, 1)}</span><span class="u">PPR</span></div>
+    return `<article class="play ${fresh ? 'fresh' : ''} ${p.td ? 'is-td' : ''} ${isMine(p) ? 'is-mine' : ''}${spot}" data-play="${esc(p.id)}">
+      <div class="ppr ${cls}" title="${esc(prim?.name || 'No one')} scored ${signed(pts, 2)} ${unit()} points on this play"><span class="v">${signed(pts, 1)}</span><span class="u">${unit()}</span></div>
       <div class="body">
         <div class="play-meta">${scoreLine(p)}${meta}</div>
         ${who}
@@ -409,6 +447,7 @@
       case 'ppr10': return p.ppr >= 10;
       case 'big': return p.explosive || p.ppr >= 8;
       case 'mine': return p.players.some((x) => S.myLineupIds.has(String(x.id)));
+      case 'team': return isMine(p);
       default: return true;
     }
   }
@@ -442,7 +481,7 @@
       <div class="lc-top"><span class="lc-live"><i></i>Live</span><span>${esc(g.detail || '')}</span>${g.redZone ? '<span class="lc-rz">Red zone</span>' : ''}<span class="lc-tv">${esc(g.broadcast || '')}</span></div>
       <div class="lc-score">${side(g.away, g.home)}${side(g.home, g.away)}</div>
       ${field}
-      ${hot ? `<div class="lc-hot">${face(hot, 'face sm')}<span><small>Hottest right now</small>${esc(hot.name)}</span><b>${fmt(hot.gamePpr)}</b></div>` : ''}
+      ${hot ? `<div class="lc-hot">${face(hot, 'face sm')}<span><small>Hottest right now</small>${esc(hot.name)}</span><b>${fmt(adjToday(hot))}</b></div>` : ''}
     </a>`;
   }
   function renderLive() {
@@ -457,7 +496,11 @@
   async function loadFeed(append = false) {
     if (S.feed.loading) return;
     S.feed.loading = true;
-    const qs = new URLSearchParams({ filter: S.feed.filter, limit: 30 });
+    const qs = new URLSearchParams({ filter: S.feed.filter === 'team' ? 'all' : S.feed.filter, limit: 30 });
+    if (S.feed.filter === 'team') {
+      if (!S.myFantasyIds.size) { S.feed.plays = []; S.feed.next = null; S.feed.loading = false; renderFeedList(); return; }
+      qs.set('players', [...S.myFantasyIds].join(','));
+    }
     if (S.feed.game) qs.set('game', S.feed.game);
     else if (S.sel) qs.set('week', S.sel);
     if (append && S.feed.next) qs.set('before', S.feed.next);
@@ -490,7 +533,9 @@
     let html = '';
     if (S.pending.length) html += `<button class="new-plays" data-act="show-new">${S.pending.length} new play${S.pending.length > 1 ? 's' : ''}</button>`;
     if (!S.feed.plays.length) {
-      const msg = S.feed.filter === 'mine'
+      const msg = S.feed.filter === 'team'
+        ? (S.myFantasyIds.size ? '<b>No plays from your team yet</b>Your players show up here the second they touch the ball.' : '<b>Bring in your fantasy team</b><a href="#/team">Connect your Sleeper league</a> to follow just your players.')
+        : S.feed.filter === 'mine'
         ? (S.me ? '<b>No plays from your lineup yet</b>Your players show up here as soon as they touch the ball. <a href="#/lineups">Build a lineup</a>' : '<b>Join to follow your lineup</b><a href="#" data-act="join">Pick a username</a>, then build a lineup.')
         : (() => {
           const next = S.games.filter((g) => g.state === 'pre').sort((a, b) => a.start - b.start)[0];
@@ -510,7 +555,7 @@
     const games = S.games.length, done = S.games.filter((g) => g.state === 'post').length;
     const aside = isCurrentWeek() ? 'Standard PPR · updated every play<br>Plays from ESPN · season stats from nflverse'
       : `Standard PPR · ${games} games${done && done < games ? `, ${done} final` : done ? ', all final' : ''}<br>Plays from ESPN · season stats from nflverse`;
-    view.innerHTML = `${pageHead(`${weekLabel()}${isCurrentWeek() ? ' · Live' : ''}`, 'Every play, in PPR', aside)}<section id="liveNow" class="live-now" hidden></section>${filterTabs()}<div class="feed" id="feedList"></div>`;
+    view.innerHTML = `${pageHead(`${weekLabel()}${isCurrentWeek() ? ' · Live' : ''}`, 'Every play, in PPR', `${aside}<div class="fmt-row">${fmtSeg()}</div>`)}<section id="liveNow" class="live-now" hidden></section>${filterTabs()}<div class="feed" id="feedList"></div>`;
     renderLive();
     loadFeed();
   }
@@ -691,7 +736,7 @@
   S.pl = { pos: 'ALL', q: '', rows: [], at: 0 };
   const kick = (ms) => ms ? new Date(ms).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
   async function showPlayers() {
-    view.innerHTML = `${pageHead(weekLabel(), 'Players', 'Every player\'s PPR points<br>Updates live with each play')}
+    view.innerHTML = `${pageHead(weekLabel(), 'Players', `Every player's fantasy points<br>Updates live with each play<div class="fmt-row">${fmtSeg()}</div>`)}
       <div class="pills seg" id="plPos">${['ALL', 'QB', 'RB', 'WR', 'TE'].map((x) => `<button class="pill ${S.pl.pos === x ? 'on' : ''}" data-p="${x}">${x === 'ALL' ? 'All' : x}</button>`).join('')}</div>
       <div class="pool-tools"><input id="plQ" type="search" placeholder="Search player or team" value="${esc(S.pl.q)}"></div>
       <div id="plList"><div class="empty">Loading players…</div></div>`;
@@ -712,13 +757,134 @@
   function drawPlayers() {
     const list = $('#plList'); if (!list) return;
     const q = S.pl.q.trim().toLowerCase();
-    const rows = S.pl.rows.filter((p) => (S.pl.pos === 'ALL' || p.pos === S.pl.pos) && (!q || `${p.name} ${p.team}`.toLowerCase().includes(q))).slice(0, 200);
-    list.innerHTML = rows.length ? `<table class="box players"><thead><tr><th style="width:36px">#</th><th>Player</th><th class="num">Avg</th><th class="num">PPR</th></tr></thead><tbody>
-      ${rows.map((p, i) => `<tr class="${S.myLineupIds.has(String(p.id)) ? 'mine' : ''}"><td class="sub">${i + 1}</td>
-        <td><div class="nm">${face(p, 'face sm')}<span>${esc(p.name)}<span class="pos">${esc(p.pos)} · ${esc(p.team)}${p.opp ? ` ${p.home ? 'vs' : '@'} ${esc(p.opp)}` : ''}</span></span></div>
+    const rows = S.pl.rows.filter((p) => (S.pl.pos === 'ALL' || p.pos === S.pl.pos) && (!q || `${p.name} ${p.team}`.toLowerCase().includes(q)))
+      .map((p) => ({ ...p, pts: fpts(p) })).sort((a, b) => b.pts - a.pts || (b.ppg || 0) - (a.ppg || 0)).slice(0, 200);
+    list.innerHTML = rows.length ? `<table class="box players"><thead><tr><th style="width:36px">#</th><th>Player</th><th class="num">Avg</th><th class="num">${unit()}</th></tr></thead><tbody>
+      ${rows.map((p, i) => `<tr class="${S.myLineupIds.has(String(p.id)) || S.myFantasyIds.has(String(p.id)) ? 'mine' : ''}"><td class="sub">${i + 1}</td>
+        <td><div class="nm">${face(p, 'face sm')}<span><button class="plink" data-act="player" data-pid="${esc(p.id)}">${esc(p.name)}</button>${p.inj ? ` <span class="inj">${esc(p.inj)}</span>` : ''}<span class="pos">${esc(p.pos)} · ${esc(p.team)}${p.opp ? ` ${p.home ? 'vs' : '@'} ${esc(p.opp)}` : ''}</span></span></div>
         <div class="sub">${esc(p.line || (p.gameState === 'pre' ? (p.kickoff ? `Kicks off ${kick(p.kickoff)}` : 'Not started') : p.gameState === 'post' ? 'Final' : ''))}</div></td>
-        <td class="num sub">${p.ppg != null ? fmt(p.ppg) : '—'}</td><td class="num pp">${fmt(p.ppr || 0)}</td></tr>`).join('')}
+        <td class="num sub">${p.ppg != null ? fmt(p.ppg) : '—'}</td><td class="num pp">${fmt(p.pts || 0)}</td></tr>`).join('')}
       </tbody></table>` : `<div class="empty">${S.pl.rows.length ? 'No players match.' : '<b>No players yet</b>They show up once this week\'s slate loads.'}</div>`;
+  }
+
+  // ---------- my fantasy team (Sleeper) ----------
+  const SL = 'https://api.sleeper.app/v1';
+  const slGet = async (path) => { const r = await fetch(SL + path); if (!r.ok) throw new Error('Sleeper did not answer. Try again in a moment.'); return r.json(); };
+  const SLOT_NAMES = { SUPER_FLEX: 'SFLX', REC_FLEX: 'FLEX', WRRB_FLEX: 'FLEX', IDP_FLEX: 'IDP', DEF: 'DEF', K: 'K' };
+  function saveSleeper(v) { S.sl = v; ls.set('sl-sleeper', v ? JSON.stringify(v) : null); }
+  function setFantasyIds(ids) { S.myFantasyIds = new Set(ids.map(String)); ls.set('sl-sleeper-ids', JSON.stringify([...S.myFantasyIds])); }
+  async function showTeam() {
+    view.innerHTML = `${pageHead(weekLabel(), 'My team', 'Your real fantasy matchup, live<br>From your Sleeper league')}<div id="teamBody"><div class="empty">Loading…</div></div>`;
+    if (!S.sl?.leagueId) return teamConnect();
+    try { await teamMatchup(); } catch (e) { $('#teamBody').innerHTML = `<div class="empty"><b>Couldn't load your league</b>${esc(e.message)}<br><button class="btn ghost" data-act="sl-reset" style="margin-top:14px">Choose a different league</button></div>`; }
+  }
+  function teamConnect(err = '') {
+    $('#teamBody').innerHTML = `<div class="team-connect">
+      <p class="rules">Bring in your Sleeper team to see your matchup score live, follow only your players in the feed and get an alert when they score. Only your public Sleeper username is needed: no password.</p>
+      <form id="slForm" class="field"><label for="slUser">Sleeper username</label><input id="slUser" autocomplete="username" placeholder="e.g. waiverwire_wizard" value="${esc(S.sl?.username || '')}" required>
+      <div class="err" id="slErr">${esc(err)}</div><button class="btn" type="submit">Find my leagues</button></form>
+      <div id="slLeagues"></div>
+      <p class="rules">ESPN and Yahoo leagues need a sign-in, so they're not supported yet.</p></div>`;
+    $('#slForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const name = $('#slUser').value.trim();
+      $('#slErr').textContent = '';
+      try {
+        const user = await slGet(`/user/${encodeURIComponent(name)}`);
+        if (!user?.user_id) throw new Error('No Sleeper user with that name.');
+        const leagues = await slGet(`/user/${user.user_id}/leagues/nfl/${S.week?.season || new Date().getFullYear()}`);
+        if (!leagues?.length) throw new Error(`No ${S.week?.season || ''} leagues found for ${name}.`);
+        S.slPick = { user, leagues };
+        $('#slLeagues').innerHTML = `<span class="label">Pick a league</span><div class="sl-leagues">${leagues.map((l) => `<button class="cz-opt" data-act="sl-league" data-id="${esc(l.league_id)}"><strong>${esc(l.name)}</strong><small>${l.total_rosters} teams · ${l.scoring_settings?.rec === 1 ? 'PPR' : l.scoring_settings?.rec === 0.5 ? 'Half PPR' : 'Standard'}</small></button>`).join('')}</div>`;
+      } catch (err) { $('#slErr').textContent = err.message; }
+    };
+  }
+  async function teamMatchup() {
+    const { leagueId, userId } = S.sl;
+    const week = S.sel || S.week?.week;
+    const [league, rosters, users, matchups, pl] = await Promise.all([
+      slGet(`/league/${leagueId}`), slGet(`/league/${leagueId}/rosters`), slGet(`/league/${leagueId}/users`),
+      slGet(`/league/${leagueId}/matchups/${week}`).catch(() => []), api(`/api/players${S.sel ? `?week=${S.sel}` : ''}`),
+    ]);
+    const mine = rosters.find((r) => r.owner_id === userId || (r.co_owners || []).includes(userId));
+    if (!mine) throw new Error('You are not on a team in this league.');
+    const me = (matchups || []).find((m) => m.roster_id === mine.roster_id);
+    const opp = me ? matchups.find((m) => m.matchup_id === me.matchup_id && m.roster_id !== me.roster_id) : null;
+    const oppRoster = opp ? rosters.find((r) => r.roster_id === opp.roster_id) : null;
+    const allIds = [...new Set([...(mine.players || []), ...(me?.starters || []), ...(opp?.starters || [])].filter((x) => x && x !== '0'))];
+    const { map } = await api(`/api/sleeper/map?ids=${allIds.join(',')}`);
+    const rows = new Map(pl.players.map((p) => [String(p.id), p]));
+    const sc = league.scoring_settings || {};
+    const slots = (league.roster_positions || []).filter((x) => x !== 'BN' && x !== 'IR' && x !== 'TAXI');
+    const player = (sid) => {
+      if (!sid || sid === '0') return { empty: true };
+      if (/^[A-Z]{2,3}$/.test(sid)) return { name: `${sid} D/ST`, team: sid, pos: 'DEF', def: true };
+      const row = rows.get(String(map[sid])) || null;
+      return row ? { ...row, pts: fpts(row, sc) } : { name: 'Not on this week\'s slate', unknown: true };
+    };
+    const team = (m, roster) => {
+      const starters = (m?.starters || roster?.starters || []).map(player);
+      const total = starters.reduce((a, p) => a + (p.pts || 0), 0);
+      const left = starters.filter((p) => !p.empty && !p.def && !p.unknown && p.gameState === 'pre').length;
+      const live = starters.filter((p) => p.gameState === 'in').length;
+      return { starters, total, left, live };
+    };
+    const A = team(me, mine), B = opp ? team(opp, oppRoster) : null;
+    const uname = (roster) => { const u = users.find((x) => x.user_id === roster?.owner_id); return u?.metadata?.team_name || u?.display_name || 'Opponent'; };
+    setFantasyIds((mine.players || []).map((sid) => map[sid]).filter(Boolean));
+    if (S.sl.rec !== sc.rec) { S.sl.rec = sc.rec; saveSleeper(S.sl); }
+    const cell = (p) => {
+      if (p.empty) return '<div class="tm-p empty">Empty</div>';
+      if (p.def || p.unknown) return `<div class="tm-p"><div class="nm">${esc(p.name)}</div><div class="sub">${p.def ? 'D/ST points not tracked yet' : ''}</div></div>`;
+      const st = p.gameState === 'pre' ? (p.kickoff ? kick(p.kickoff) : 'Not started') : p.gameState === 'post' ? `Final · ${esc(p.line || '')}` : `<span class="live">Live</span> · ${esc(p.line || '')}`;
+      return `<div class="tm-p ${p.gameState === 'in' ? 'is-live' : ''}">${face(p, 'face sm')}<div><div class="nm"><button class="plink" data-act="player" data-pid="${esc(p.id)}">${esc(p.name)}</button>${p.inj ? ` <span class="inj">${esc(p.inj)}</span>` : ''}</div><div class="sub">${esc(p.pos)} · ${esc(p.team)} · ${st}</div></div><b>${p.gameState === 'pre' ? '–' : fmt(p.pts)}</b></div>`;
+    };
+    const share = B && A.total + B.total > 0 ? A.total / (A.total + B.total) * 100 : 50;
+    const head = `<div class="tm-head">
+      <div class="tm-side me"><small>${esc(uname(mine))}</small><b>${fmt(A.total)}</b><span>${A.live ? `${A.live} playing · ` : ''}${A.left} yet to play</span></div>
+      <div class="tm-vs">vs</div>
+      <div class="tm-side"><small>${B ? esc(uname(oppRoster)) : 'No opponent'}</small><b>${B ? fmt(B.total) : '–'}</b><span>${B ? `${B.live ? `${B.live} playing · ` : ''}${B.left} yet to play` : ''}</span></div>
+      <div class="tm-bar"><i style="width:${share}%"></i></div></div>`;
+    const lines = slots.map((slot, i) => `<div class="tm-row"><span class="tm-slot">${esc(SLOT_NAMES[slot] || slot)}</span>${cell(A.starters[i] || { empty: true })}${B ? cell(B.starters[i] || { empty: true }) : ''}</div>`).join('');
+    const bench = (mine.players || []).filter((sid) => !(me?.starters || []).includes(sid)).map(player).filter((p) => !p.empty);
+    $('#teamBody').innerHTML = `${head}
+      <div class="tm-tools"><span class="label">${esc(league.name)} · ${sc.rec === 1 ? 'PPR' : sc.rec === 0.5 ? 'Half PPR' : 'Standard'} scoring</span>
+        <button class="pill ${S.alerts ? 'on' : ''}" data-act="alerts">${S.alerts ? 'Score alerts on' : 'Alert me when my players score'}</button>
+        <a class="pill" href="#/feed" data-act="team-feed">Plays from my team</a>
+        <button class="pill" data-act="sl-reset">Change league</button></div>
+      <div class="tm-grid ${B ? 'two' : ''}">${lines}</div>
+      ${bench.length ? `<details class="tm-bench"><summary class="label">Bench · ${fmt(bench.reduce((a, p) => a + (p.pts || 0), 0))} pts</summary>${bench.map((p) => `<div class="tm-row"><span class="tm-slot">BN</span>${cell(p)}</div>`).join('')}</details>` : ''}
+      <p class="rules">Points use your league's scoring for yards, touchdowns, catches (including position bonuses), turnovers and 2-pt conversions. Kickers use standard scoring; D/ST and IDP aren't tracked yet.</p>`;
+  }
+
+  // ---------- one player's day ----------
+  async function openPlayer(pid) {
+    openSheet('Player', '<div class="empty">Loading…</div>');
+    try {
+      const [{ plays }, pl] = await Promise.all([api(`/api/feed?player=${encodeURIComponent(pid)}&limit=100${S.sel ? `&week=${S.sel}` : ''}`), api(`/api/players${S.sel ? `?week=${S.sel}` : ''}`)]);
+      const row = pl.players.find((p) => String(p.id) === String(pid));
+      const me = plays.map((p) => p.players.find((x) => String(x.id) === String(pid))).find(Boolean);
+      const info = row || me || { name: 'Player' };
+      $('#sheetTitle').textContent = info.name;
+      let run = 0;
+      const items = plays.slice().reverse().map((p) => { const x = p.players.find((y) => String(y.id) === String(pid)); const v = x ? adj(x) : 0; run += v; return { p, v, run }; }).reverse();
+      const total = row ? fpts(row) : run;
+      $('#sheetBody').innerHTML = `<div class="pl-head">${face(info)}<div><div class="label">${esc([info.pos, info.team].filter(Boolean).join(' · '))}${row?.inj ? ` · <span class="inj">${esc(row.inj)}</span>` : ''}</div><div class="pl-total"><b>${fmt(total)}</b> ${unit()} this week</div><div class="sub">${esc(row?.line || '')}</div></div></div>
+        ${items.length ? `<div class="pl-plays">${items.map(({ p, v, run: r }) => `<button class="pl-play" data-act="comments" data-id="${esc(p.id)}"><span class="q">Q${p.period} ${esc(p.clock)}</span><span class="h">${esc(p.headline)}</span><b class="${v < 0 ? 'minus' : v === 0 ? 'zero' : ''}">${signed(v, 1)}</b><small>${fmt(r)}</small></button>`).join('')}</div>` : '<p class="rules">No plays yet this week.</p>'}`;
+    } catch (e) { $('#sheetBody').innerHTML = `<div class="empty">${esc(e.message)}</div>`; }
+  }
+
+  // ---------- score alerts for your players ----------
+  function alertFor(p) {
+    if (!S.alerts || !S.myFantasyIds.size) return;
+    const x = p.players?.find((y) => S.myFantasyIds.has(String(y.id)));
+    if (!x) return;
+    const v = adj(x);
+    if (!(p.td || v >= 4 || v <= -2)) return;
+    const title = `${x.name} ${signed(v, 1)} ${unit()}`;
+    if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+      try { new Notification(title, { body: p.headline, tag: p.id }); } catch { /* ignore */ }
+    } else toast(`${title}: ${p.headline}`);
   }
 
   // ---------- ranks ----------
@@ -853,6 +1019,34 @@
           break;
         }
         case 'comments': openComments(id); break;
+        case 'player': e.preventDefault(); openPlayer(t.dataset.pid); break;
+        case 'fmt': {
+          S.fmt = t.dataset.v; ls.set('sl-scoring', S.fmt); ls.set('sl-scoring-set', '1');
+          document.querySelectorAll('.fmt-seg button').forEach((b) => { b.classList.toggle('on', b.dataset.v === S.fmt); b.setAttribute('aria-checked', b.dataset.v === S.fmt); });
+          if ($('#feedList')) renderFeedList();
+          if ($('#plList')) drawPlayers();
+          renderLive();
+          break;
+        }
+        case 'sl-league': {
+          const l = S.slPick.leagues.find((x) => x.league_id === id);
+          saveSleeper({ username: S.slPick.user.display_name || S.slPick.user.username, userId: S.slPick.user.user_id, leagueId: id, leagueName: l?.name || '' });
+          if (l?.scoring_settings && !ls.get('sl-scoring-set')) {
+            const r = l.scoring_settings.rec;
+            S.fmt = r === 1 ? 'ppr' : r === 0.5 ? 'half' : r === 0 ? 'std' : S.fmt; ls.set('sl-scoring', S.fmt);
+          }
+          showTeam();
+          break;
+        }
+        case 'sl-reset': saveSleeper(null); setFantasyIds([]); showTeam(); break;
+        case 'team-feed': S.feed.filter = 'team'; break;
+        case 'alerts': {
+          if (!S.alerts && 'Notification' in window && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch { /* ignore */ } }
+          S.alerts = !S.alerts; ls.set('sl-alerts', S.alerts ? '1' : null);
+          t.classList.toggle('on', S.alerts); t.textContent = S.alerts ? 'Score alerts on' : 'Alert me when my players score';
+          toast(S.alerts ? 'You\'ll get an alert when your players score or turn it over.' : 'Score alerts off.');
+          break;
+        }
         case 'pick': {
           if (!requireUser()) return;
           await api('/api/picks', { method: 'POST', body: { gameId: t.dataset.game, market: t.dataset.m, selection: t.dataset.sel } });
@@ -1009,6 +1203,7 @@
       const p = JSON.parse(e.data);
       notePlays([p]);
       renderLive();
+      alertFor(p);
       if (currentRoute() === 'players' && Date.now() - S.pl.at > 8000) loadPlayers();
       if (!$('#feedList') || !matchesFeed(p)) return;
       if (S.feed.plays.some((x) => x.id === p.id)) return;
@@ -1048,7 +1243,7 @@
       if (g) g.splits = splits;
     });
     let pt;
-    const refreshPoints = () => { clearTimeout(pt); pt = setTimeout(() => { renderSide(); if (currentRoute() === 'lineups' && S.luTab === 'top') renderTopLineups(); }, 1500); };
+    const refreshPoints = () => { clearTimeout(pt); pt = setTimeout(() => { renderSide(); if (currentRoute() === 'lineups' && S.luTab === 'top') renderTopLineups(); if (currentRoute() === 'team' && S.sl?.leagueId && $('.tm-head')) teamMatchup().catch(() => {}); }, 1500); };
     es.addEventListener('points', refreshPoints);
     es.addEventListener('lineups', refreshPoints);
     es.addEventListener('leaderboard', () => { loadMe(); renderSide(); });
@@ -1067,6 +1262,7 @@
     else if (r === 'lineups') showLineups();
     else if (r === 'ranks') showRanks();
     else if (r === 'players') showPlayers();
+    else if (r === 'team') showTeam();
     else { gameTab = 'plays'; showFeed(); }
     window.scrollTo({ top: 0 });
   }
