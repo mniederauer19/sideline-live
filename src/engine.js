@@ -275,6 +275,7 @@ function processSummaryTx(game, summary, opts, gs) {
   let lastWp = 0.5;
   const fresh = [], updated = [];
   const keep = new Set();
+  const staleIds = new Set();
 
   // Plays already parsed on an earlier poll are reused (only new or edited plays are re-read),
   // which keeps live updates light enough for a small server.
@@ -293,6 +294,15 @@ function processSummaryTx(game, summary, opts, gs) {
   raws.forEach((raw, i) => {
     const id = String(raw.id);
     const sig = `${raw.text || ''}|${raw.type?.text || ''}|${raw.modified || ''}|${raw.homeScore}-${raw.awayScore}|${raw.scoringPlay ? 1 : 0}|${raw.end?.yardsToEndzone}`;
+    // The summary runs ~20s behind ESPN's play list. If it still has an older version of a
+    // play the list has already corrected, keep the newer one (and keep the "first look" tag).
+    const cs = gs.coreSeen?.get(id);
+    if (cs && sig !== cs.latest && cs.sigs.has(sig) && gs.parsed.get(id)) {
+      const b = gs.parsed.get(id);
+      if (b.play.kind !== 'admin') for (const p of b.play.players) if (p.id) accumulate(p);
+      keep.add(id); staleIds.add(id);
+      return;
+    }
     let base = gs.parsed.get(id);
     const changed = !base || base.sig !== sig;
     if (changed) {
@@ -359,7 +369,7 @@ function processSummaryTx(game, summary, opts, gs) {
   // Remove plays ESPN took back, but not ones the fast path added that the summary hasn't reached yet
   const maxSeq = raws.reduce((m, r) => Math.max(m, Number(r.sequenceNumber) || 0), 0);
   if (!gs.quick) gs.quick = new Map();
-  for (const id of keep) gs.quick.delete(id);
+  for (const id of keep) if (!staleIds.has(id)) gs.quick.delete(id);
   for (const id of existing.keys()) {
     if (keep.has(id)) continue;
     const q = gs.quick.get(id);
@@ -488,6 +498,10 @@ async function pollCore(game) {
       for (const raw of items) {
         const id = String(raw.id);
         const sig = playSig(raw);
+        if (!gs.coreSeen) gs.coreSeen = new Map();
+        const seen = gs.coreSeen.get(id) || { sigs: new Set(), latest: null };
+        seen.sigs.add(sig); seen.latest = sig;
+        gs.coreSeen.set(id, seen);
         const prev = gs.parsed.get(id);
         if (existing.has(id) || prev) {
           // ESPN filled in a play we showed as a first look: update the card right away
