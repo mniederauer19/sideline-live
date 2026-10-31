@@ -547,6 +547,7 @@ function collegeText(text) {
   let t = String(text || '');
   t = t.replace(/^\(\d{1,2}:\d{2}\)\s*/, '');                       // leading clock
   t = t.replace(/#\d{1,2}\s+(?=[A-Z])/g, '');                          // jersey numbers
+  t = t.replace(new RegExp(`(${N}),? (?:Jr\\.?|Sr\\.?|II|III|IV|V)(?=[ ,.;)])`, 'g'), '$1');   // name suffixes
   t = t.replace(new RegExp(`(${N}) rush (left|middle|right)`, 'g'), (m, who, dir) => `${who} ${dir === 'middle' ? 'up the middle' : `${dir} end`}`);
   t = t.replace(new RegExp(`(${N}) rush\\b`, 'g'), '$1 rushes');
   t = t.replace(/ pass complete /g, ' pass ');
