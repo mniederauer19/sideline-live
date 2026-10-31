@@ -7,6 +7,7 @@ const nflverse = require('./src/nflverse');
 const engine = require('./src/engine');
 const sidelineAuth = require('./src/sideline-auth');
 const tradeValues = require('./src/trade-values');
+const weeklyRanks = require('./src/weekly-ranks');
 const persist = require('./src/persist');
 const { isOffensive } = require('./src/moderation');
 
@@ -423,29 +424,65 @@ function slatePlayers() {
     .sort((a, b) => b.salary - a.salary || b.ppg - a.ppg);
 }
 
-// Salaries follow sidelineff.com's trade analyzer values. The cap is what an average
-// 12-team PPR starting lineup costs (the average QB1-12, RB1-24, WR1-24 and TE1-12 among
-// this week's players, plus the average flex: the next 12 RB/WR/TE), so a lineup full of
-// stars doesn't fit and you have to find value.
+// Salaries follow sidelineff.com's weekly rankings (rank at each position + projected PPR points,
+// the same rankings its rankings page shows). Each rank is priced by how much it's worth over a
+// 12-team PPR replacement player at that position (QB13, RB25, WR25, TE13), with a little weight
+// on raw projected points. The cap is what an average 12-team PPR starting lineup costs this week
+// (the average QB1-12, RB1-24, WR1-24, TE1-12, plus the average flex: the next 12 RB/WR/TE), so a
+// lineup of stars doesn't fit. If the rankings can't be loaded, trade values, then stats, are used.
 const SAL_MIN = 2000, SAL_MAX = 10000;
-function pricedSlate() {
-  const list = slatePlayers();
-  if (!tradeValues.state.players.size) return { players: list, cap: cfg.SALARY_CAP, pricing: 'stats' };
-  for (const p of list) p.value = tradeValues.valueOf(p.name, p.pos) ?? 0;
-  const top = Math.max(1, ...list.map((p) => p.value));
-  for (const p of list) p.salary = Math.round((SAL_MIN + (SAL_MAX - SAL_MIN) * Math.min(1, p.value / top)) / 100) * 100;
-  const by = (pos) => list.filter((p) => p.pos === pos).sort((a, b) => b.value - a.value);
+const REPLACEMENT = { QB: 13, RB: 25, WR: 25, TE: 13 };
+function capFor(list, worth) {
+  const by = (pos) => list.filter((p) => p.pos === pos).sort((a, b) => worth(b) - worth(a));
   const avg = (arr) => (arr.length ? arr.reduce((a, p) => a + p.salary, 0) / arr.length : SAL_MIN);
   const rb = by('RB'), wr = by('WR'), te = by('TE');
-  const flex = [...rb.slice(24), ...wr.slice(24), ...te.slice(12)].sort((a, b) => b.value - a.value);
+  const flex = [...rb.slice(24), ...wr.slice(24), ...te.slice(12)].sort((a, b) => worth(b) - worth(a));
   const cap = avg(by('QB').slice(0, 12)) + 2 * avg(rb.slice(0, 24)) + 2 * avg(wr.slice(0, 24)) + avg(te.slice(0, 12)) + avg(flex.slice(0, 12));
-  list.sort((a, b) => b.salary - a.salary || b.ppg - a.ppg);
-  return { players: list, cap: Math.round(cap / 500) * 500, pricing: 'trade', valuesAsOf: tradeValues.state.asOf };
+  return Math.round(cap / 500) * 500;
+}
+function pricedSlate() {
+  const list = slatePlayers();
+  if (weeklyRanks.state.rows.size) {
+    // projected points at each rank, per position (rank 1 = best projection slot)
+    const curve = {};
+    for (const r of weeklyRanks.state.rows.values()) (curve[r.pos] ||= []).push(r.proj);
+    for (const pos of Object.keys(curve)) curve[pos].sort((a, b) => b - a);
+    const slot = (pos, rank) => { const c = curve[pos] || []; return c.length ? c[Math.min(c.length, Math.max(1, rank)) - 1] : 0; };
+    const repl = (pos) => slot(pos, REPLACEMENT[pos]);
+    for (const p of list) {
+      const r = weeklyRanks.rankOf(p.name, p.pos);
+      p.weekRank = r ? r.rank : null;
+      p.proj = r ? r.proj : null;
+      const pts = r ? slot(p.pos, r.rank) : 0;
+      p.vor = r ? Math.max(0, pts - repl(p.pos)) : 0;
+      p.slotPts = pts;
+    }
+    const maxVor = Math.max(1, ...list.map((p) => p.vor));
+    const maxPts = Math.max(1, ...list.map((p) => p.slotPts));
+    for (const p of list) {
+      const worth = p.weekRank ? 0.75 * (p.vor / maxVor) + 0.25 * (p.slotPts / maxPts) : 0;
+      p.worth = worth;
+      p.salary = Math.round((SAL_MIN + (SAL_MAX - SAL_MIN) * Math.min(1, worth)) / 100) * 100;
+      delete p.vor; delete p.slotPts;
+    }
+    const cap = capFor(list, (p) => p.worth);
+    for (const p of list) delete p.worth;
+    list.sort((a, b) => b.salary - a.salary || (a.weekRank || 999) - (b.weekRank || 999));
+    return { players: list, cap, pricing: 'weekly', rankingsWeek: weeklyRanks.state.week, rankingsAt: weeklyRanks.state.updatedAt };
+  }
+  if (tradeValues.state.players.size) {
+    for (const p of list) p.value = tradeValues.valueOf(p.name, p.pos) ?? 0;
+    const top = Math.max(1, ...list.map((p) => p.value));
+    for (const p of list) p.salary = Math.round((SAL_MIN + (SAL_MAX - SAL_MIN) * Math.min(1, p.value / top)) / 100) * 100;
+    list.sort((a, b) => b.salary - a.salary || b.ppg - a.ppg);
+    return { players: list, cap: capFor(list, (p) => p.value), pricing: 'trade', valuesAsOf: tradeValues.state.asOf };
+  }
+  return { players: list, cap: cfg.SALARY_CAP, pricing: 'stats' };
 }
 
 app.get('/api/slate', (req, res) => {
   const s = pricedSlate();
-  res.json({ ...engine.currentWeek(), cap: s.cap, pricing: s.pricing, valuesAsOf: s.valuesAsOf || null, slots: cfg.ROSTER_SLOTS, slotPos: SLOT_POS, players: s.players });
+  res.json({ ...engine.currentWeek(), cap: s.cap, pricing: s.pricing, valuesAsOf: s.valuesAsOf || null, rankingsWeek: s.rankingsWeek || null, rankingsAt: s.rankingsAt || null, slots: cfg.ROSTER_SLOTS, slotPos: SLOT_POS, players: s.players });
 });
 
 function liveLineup(players) {
@@ -569,6 +606,7 @@ app.get('/api/health', (_req, res) => res.json({ ok: true, demo: cfg.DEMO, week:
   plays: db.prepare('SELECT COUNT(*) n FROM plays').get().n, sync: engine.sync,
   sidelineLogin: { status: sidelineAuth.state.lastStatus, error: sidelineAuth.state.lastError },
   tradeValues: { players: tradeValues.state.players.size, asOf: tradeValues.state.asOf, error: tradeValues.state.error },
+  weeklyRanks: { players: weeklyRanks.state.rows.size, week: weeklyRanks.state.week, updatedAt: weeklyRanks.state.updatedAt, error: weeklyRanks.state.error },
   saved: persist.enabled ? { restored: persist.state.restored, pending: persist.state.pending, failed: persist.state.failed } : null, players: nflverse.state.byEspn.size, clients: clients.size }));
 
 // The page itself. When another site serves this app under a path (sidelineff.com/live)
@@ -625,6 +663,7 @@ process.on('SIGTERM', async () => {
   cleanUpOffensive();
   nflverse.start();
   tradeValues.start();
+  weeklyRanks.start();
   engine.start();
   if (!cfg.DEMO) sidelineAuth.selfCheck().then((st) => console.log(`[auth] sidelineff.com login check: ${st.lastStatus || st.lastError}`));
   app.listen(cfg.PORT, () => console.log(`Sideline Live on http://localhost:${cfg.PORT}${cfg.DEMO ? '  (DEMO MODE)' : ''}`));

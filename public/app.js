@@ -42,6 +42,46 @@
     if (calm.matches || !document.startViewTransition) return fn();
     try { return document.startViewTransition(fn); } catch { return fn(); }
   }
+  // ---------- motion helpers ----------
+  // A highlight that glides to the selected tab/filter instead of jumping
+  const GLIDE = '.nav, .pills, .fmt-seg, .cz-seg';
+  function glideAll(animate = true) {
+    document.querySelectorAll(GLIDE).forEach((box) => {
+      const on = box.querySelector(':scope > .on');
+      let g = box.querySelector(':scope > .glide');
+      if (!on || on.offsetParent === null) { if (g) g.style.opacity = '0'; return; }
+      const fresh = !g;
+      if (!g) { g = document.createElement('span'); g.className = 'glide'; g.setAttribute('aria-hidden', 'true'); box.prepend(g); box.classList.add('has-glide'); }
+      const still = fresh || !animate || calm.matches;
+      if (still) g.style.transition = 'none';
+      g.style.opacity = '1';
+      g.style.setProperty('--gx', `${on.offsetLeft}px`);
+      g.style.setProperty('--gy', `${on.offsetTop}px`);
+      g.style.setProperty('--gw', `${on.offsetWidth}px`);
+      g.style.setProperty('--gh', `${on.offsetHeight}px`);
+      if (still) { void g.offsetWidth; g.style.transition = ''; }
+    });
+  }
+  let glideRaf = 0;
+  const glideSoon = () => { cancelAnimationFrame(glideRaf); glideRaf = requestAnimationFrame(() => glideAll(true)); };
+  window.addEventListener('resize', () => glideAll(false));
+  // Numbers that change count to their new value
+  function tween(el, from, to, format, ms = 450) {
+    if (!el) return;
+    if (calm.matches || from === to || from == null) { el.textContent = format(to); return; }
+    const t0 = performance.now();
+    const step = (t) => { const k = Math.min(1, (t - t0) / ms), e = 1 - (1 - k) ** 3; el.textContent = format(from + (to - from) * e); if (k < 1) requestAnimationFrame(step); };
+    requestAnimationFrame(step);
+  }
+  // Lists that change (new filter, week or sort) slide their items in
+  function refreshAnim(el) {
+    if (!el || calm.matches) return;
+    el.classList.remove('refresh'); void el.offsetWidth; el.classList.add('refresh');
+    clearTimeout(el._rt); el._rt = setTimeout(() => el.classList.remove('refresh'), 1200);
+  }
+  // Placeholder rows that shimmer while something loads
+  const skel = (n = 4, cls = '') => `<div class="skel ${cls}" aria-label="Loading">${Array.from({ length: n }, () => '<i></i>').join('')}</div>`;
+
   let enterTimer;
   function markEnter() {
     if (calm.matches) return;
@@ -294,8 +334,9 @@
     await refreshGames();
     const r = currentRoute();
     if (r === 'game') location.hash = '#/feed';
-    else if (r === 'feed' || r === '') showFeed();
-    else if (r === 'picks') showPicks();
+    else if (r === 'feed' || r === '') { markEnter(); showFeed(); }
+    else if (r === 'picks') { markEnter(); showPicks(); }
+    refreshAnim($('#strip'));
     renderSide();
   }
   function lineText(g) {
@@ -541,6 +582,7 @@
   async function loadFeed(append = false) {
     if (S.feed.loading) return;
     S.feed.loading = true;
+    $('#feedList')?.classList.toggle('loading', !append);
     const qs = new URLSearchParams({ filter: S.feed.filter === 'team' ? 'all' : S.feed.filter, limit: 30 });
     if (S.feed.filter === 'team') {
       if (!S.myFantasyIds.size) { S.feed.plays = []; S.feed.next = null; S.feed.loading = false; renderFeedList(); return; }
@@ -557,7 +599,9 @@
       S.feed.next = r.next;
       if (!append) S.pending = [];
       renderFeedList();
+      if (!append) refreshAnim($('#feedList'));
     } catch (e) { toast(e.message); }
+    $('#feedList')?.classList.remove('loading');
     S.feed.loading = false;
   }
   function filterTabs() {
@@ -693,7 +737,7 @@
   const SLOT_POS = { QB: ['QB'], RB1: ['RB'], RB2: ['RB'], WR1: ['WR'], WR2: ['WR'], WR3: ['WR'], TE: ['TE'], FLEX: ['RB', 'WR', 'TE'] };
   const SLOT_LABEL = { QB: 'QB', RB1: 'RB', RB2: 'RB', WR1: 'WR', WR2: 'WR', WR3: 'WR', TE: 'TE', FLEX: 'FLEX' };
   async function showLineups() {
-    view.innerHTML = `${pageHead(weekLabel(), 'Weekly lineups', `QB, 2 RB, 2 WR, TE, FLEX · a 12-team PPR lineup<br>Salaries from sidelineff.com trade values`)}
+    view.innerHTML = `${pageHead(weekLabel(), 'Weekly lineups', `QB, 2 RB, 2 WR, TE, FLEX · a 12-team PPR lineup<br>Salaries from sidelineff.com's weekly rankings`)}
       <div class="pills"><button class="pill ${S.luTab === 'build' ? 'on' : ''}" data-act="lutab" data-t="build">My lineup</button><button class="pill ${S.luTab === 'top' ? 'on' : ''}" data-act="lutab" data-t="top">Top lineups</button></div>
       <div id="luBody"></div>`;
     if (S.luTab === 'top') return renderTopLineups();
@@ -709,6 +753,7 @@
   function renderBuilder() {
     const cap = S.slate.cap;
     const used = draftSalary();
+    const prevUsed = S.prevUsed; S.prevUsed = used;
     const over = used > cap;
     const filled = S.slate.slots.filter((s) => S.draft[s]).length;
     const left = cap - used;
@@ -723,14 +768,21 @@
     }).join('');
     const pool = S.slate.players
       .filter((p) => (S.pos === 'ALL' || p.pos === S.pos) && (!S.q || p.name.toLowerCase().includes(S.q) || p.team.toLowerCase() === S.q))
-      .sort((a, b) => (S.sort === 'ppg' ? b.ppg - a.ppg : S.sort === 'value' ? b.ppg / b.salary - a.ppg / a.salary : b.salary - a.salary));
+      .sort((a, b) => {
+        const pts = (p) => (p.proj != null ? p.proj : p.ppg);
+        if (S.sort === 'ppg') return b.ppg - a.ppg;
+        if (S.sort === 'proj') return pts(b) - pts(a);
+        if (S.sort === 'rank') return (a.weekRank || 999) - (b.weekRank || 999) || b.salary - a.salary;
+        if (S.sort === 'value') return pts(b) / b.salary - pts(a) / a.salary;
+        return b.salary - a.salary;
+      });
     const inLineup = new Set(Object.values(S.draft));
     const rows = pool.slice(0, 150).map((p) => {
       const isIn = inLineup.has(p.id);
       const canAdd = !p.locked && !isIn && S.slate.slots.some((s) => !S.draft[s] && S.slate.slotPos[s].includes(p.pos));
       return `<div class="prow">${p.headshot ? `<img src="${esc(p.headshot)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;ph&quot;></div>'">` : '<div class="ph"></div>'}
         <div class="nm">${esc(p.name)} <small>${esc(p.pos)} · ${esc(p.team)} ${p.home ? 'vs' : '@'} ${esc(p.opp)} · ${fmt(p.ppg)} PPR/g${p.tgtShare && p.pos !== 'QB' ? ` · ${fmt(p.tgtShare, 0)}% tgt` : ''}${p.locked ? ' · 🔒 started' : ''}</small></div>
-        <div class="sal">${money(p.salary)}<small>${p.value != null ? `trade value ${fmt(p.value, p.value < 10 ? 1 : 0)}` : `${fmt(p.ppg / (p.salary / 1000), 2)} pts/$1k`}</small></div>
+        <div class="sal">${money(p.salary)}<small>${p.weekRank ? `${esc(p.pos)}${p.weekRank} this week · proj ${fmt(p.proj)}` : p.proj === null && S.slate.pricing === 'weekly' ? 'not ranked this week' : p.value != null ? `trade value ${fmt(p.value, p.value < 10 ? 1 : 0)}` : `${fmt(p.ppg / (p.salary / 1000), 2)} pts/$1k`}</small></div>
         <button class="add-btn ${isIn ? 'in' : ''}" data-act="${isIn ? 'unpick' : 'add'}" data-pid="${esc(p.id)}" ${isIn || canAdd ? '' : 'disabled'} aria-label="${isIn ? 'Remove' : 'Add'} ${esc(p.name)}">${isIn ? '✓' : '+'}</button></div>`;
     }).join('');
     $('#luBody').innerHTML = `<div class="lu-grid build">
@@ -745,13 +797,21 @@
       <div>
         <div class="pills seg">${['ALL', 'QB', 'RB', 'WR', 'TE'].map((x) => `<button class="pill ${S.pos === x ? 'on' : ''}" data-act="pos" data-p="${x}">${x === 'ALL' ? 'All' : x}</button>`).join('')}</div>
         <div class="pool-tools">
-          <select id="sortSel" aria-label="Sort">${[['salary', 'Salary'], ['ppg', 'PPR per game'], ['value', 'Value (pts per $1k)']].map(([k, l]) => `<option ${S.sort === k ? 'selected' : ''} value="${k}">Sort: ${l}</option>`).join('')}</select>
+          <select id="sortSel" aria-label="Sort">${[['salary', 'Salary'], ['rank', 'Weekly rank'], ['proj', 'Projected points'], ['ppg', 'PPR per game'], ['value', 'Value (pts per $1k)']].map(([k, l]) => `<option ${S.sort === k ? 'selected' : ''} value="${k}">Sort: ${l}</option>`).join('')}</select>
           <input id="qInp" type="search" placeholder="Search player or team" value="${esc(S.q)}">
         </div>
         <div class="pool">${rows || '<div class="empty">No players match.</div>'}</div>
       </div>
     </div>`;
-    $('#sortSel').onchange = (e) => { S.sort = e.target.value; renderBuilder(); };
+    $('#sortSel').onchange = (e) => { S.sort = e.target.value; renderBuilder(); refreshAnim($('.pool')); };
+    // motion: the cap bar slides from the old total, the number counts, the newest pick pops in
+    if (prevUsed != null && prevUsed !== used) {
+      const bar = $('.cap-bar i');
+      if (bar && !calm.matches) { const to = bar.style.width; bar.style.transition = 'none'; bar.style.width = `${Math.min(100, prevUsed / cap * 100)}%`; void bar.offsetWidth; bar.style.transition = ''; bar.style.width = to; }
+      const num = $('.cap-row b');
+      if (num) tween(num, Math.abs(cap - prevUsed), Math.abs(cap - used), (v) => money(Math.round(v / 100) * 100));
+    }
+    if (S.justAdded) { const el = document.querySelector(`.slot[data-slot="${S.justAdded}"]`); if (el && !calm.matches) el.classList.add('pop'); S.justAdded = null; }
     const q = $('#qInp');
     q.oninput = (e) => { S.q = e.target.value.trim().toLowerCase(); clearTimeout(q._t); q._t = setTimeout(() => { renderBuilder(); const n = $('#qInp'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 200); };
   }
@@ -773,6 +833,7 @@
     const slot = order.find((s) => !S.draft[s] && S.slate.slotPos[s].includes(p.pos));
     if (!slot) return toast(`No open spot for a ${p.pos}.`);
     S.draft[slot] = id;
+    S.justAdded = slot;
     renderBuilder();
   }
 
@@ -784,7 +845,7 @@
     view.innerHTML = `${pageHead(weekLabel(), 'Players', `Every player's fantasy points<br>Updates live with each play<div class="fmt-row">${fmtSeg()}</div>`)}
       <div class="pills seg" id="plPos">${['ALL', 'QB', 'RB', 'WR', 'TE'].map((x) => `<button class="pill ${S.pl.pos === x ? 'on' : ''}" data-p="${x}">${x === 'ALL' ? 'All' : x}</button>`).join('')}</div>
       <div class="pool-tools"><input id="plQ" type="search" placeholder="Search player or team" value="${esc(S.pl.q)}"></div>
-      <div id="plList"><div class="empty">Loading players…</div></div>`;
+      <div id="plList">${skel(8, 'rows')}</div>`;
     $('#plPos').addEventListener('click', (e) => {
       const b = e.target.closest('[data-p]'); if (!b) return;
       S.pl.pos = b.dataset.p; $('#plPos').querySelectorAll('.pill').forEach((x) => x.classList.toggle('on', x === b)); swap(drawPlayers);
@@ -936,7 +997,7 @@
     return S.lg.loading;
   }
   async function showLeagues() {
-    view.innerHTML = `${pageHead(weekLabel(), 'My teams', 'Your synced leagues from sidelineff.com<br>Live matchups, your players highlighted')}<div id="lgBody"><div class="empty">Loading your leagues…</div></div>`;
+    view.innerHTML = `${pageHead(weekLabel(), 'My teams', 'Your synced leagues from sidelineff.com<br>Live matchups, your players highlighted')}<div id="lgBody">${skel(3, 'cards')}</div>`;
     await loadLeagues();
     drawLeagues();
   }
@@ -1002,7 +1063,7 @@
       <nav class="lg-jump">${rows.map(({ l, mine }) => `<a href="#/leagues" data-act="lg-jump" data-id="${esc(l.id)}">${esc(l.name)}${mine && mine.opp ? ` <b class="${(mine.me.score || 0) >= (mine.opp.score || 0) ? 'up' : 'down'}">${fmt(mine.me.score || 0)}–${fmt(mine.opp.score || 0)}</b>` : ''}</a>`).join('')}</nav>
       ${rows.map(section).join('')}
       <p class="rules">Points come from each league's own scoring through your sidelineff.com sync. They refresh about every minute during games, and right after one of your players makes a play.</p>`;
-    $('#lgSort').onchange = (e) => { S.lg.sort = e.target.value; ls.set('sl-lg-sort', S.lg.sort); drawLeagues(); };
+    $('#lgSort').onchange = (e) => { S.lg.sort = e.target.value; ls.set('sl-lg-sort', S.lg.sort); swap(drawLeagues); };
   }
   // keep teams fresh: every minute while games are live, and soon after one of your players makes a play
   let lgTimer = null;
@@ -1014,7 +1075,7 @@
 
   // ---------- one player's day ----------
   async function openPlayer(pid) {
-    openSheet('Player', '<div class="empty">Loading…</div>');
+    openSheet('Player', skel(6, 'rows'));
     try {
       const [{ plays }, pl] = await Promise.all([api(`/api/feed?player=${encodeURIComponent(pid)}&limit=100${S.sel ? `&week=${S.sel}` : ''}`), api(`/api/players${S.sel ? `?week=${S.sel}` : ''}`)]);
       const row = pl.players.find((p) => String(p.id) === String(pid));
@@ -1105,7 +1166,7 @@
       html += lineup
         ? `<section><span class="label">My lineup · live</span>${lineup.players.map((p) => `<div class="mini"><em>${esc(SLOT_LABEL[p.slot])}</em><span class="who">${esc(p.name)}</span><span class="v ${p.gameState !== 'pre' ? 'amber' : ''}">${p.gameState === 'pre' ? '–' : fmt(p.points)}</span></div>`).join('')}
             <div class="total"><span class="label" style="margin:0">Total PPR</span><b>${fmt(lineup.points)}</b></div></section>`
-        : `<section><span class="label">My lineup</span><h2>Build this week's team</h2><p>Pick a QB, 2 RBs, 2 WRs, a TE and a flex under the cap. Salaries follow sidelineff.com's trade values, so a team of stars won't fit.</p><a class="btn" href="#/lineups">Build lineup</a></section>`;
+        : `<section><span class="label">My lineup</span><h2>Build this week's team</h2><p>Pick a QB, 2 RBs, 2 WRs, a TE and a flex under the cap. Salaries follow sidelineff.com's weekly rankings, so a team of stars won't fit.</p><a class="btn" href="#/lineups">Build lineup</a></section>`;
     } else {
       html += '<section><span class="label">Play along</span><h2>Join free</h2><p>Pick a username to react to plays, make free picks and build a weekly lineup.</p><button class="btn" data-act="join">Join free</button></section>';
     }
@@ -1120,11 +1181,18 @@
   function openSheet(title, html) {
     $('#sheetTitle').textContent = title;
     $('#sheetBody').innerHTML = html;
-    $('#sheet').hidden = false;
+    const wrap = $('#sheet');
+    clearTimeout(wrap._ct); wrap.classList.remove('closing');
+    wrap.hidden = false;
     document.body.style.overflow = 'hidden';
   }
   function closeSheet() {
-    $('#sheet').hidden = true;
+    const wrap = $('#sheet');
+    if (!wrap.hidden && !calm.matches) {
+      wrap.classList.add('closing');
+      clearTimeout(wrap._ct);
+      wrap._ct = setTimeout(() => { wrap.classList.remove('closing'); wrap.hidden = true; }, 190);
+    } else wrap.hidden = true;
     S.sheetPlay = null;
     S.sheetObj = null;
     S.czOpen = false;
@@ -1132,7 +1200,7 @@
   }
   async function openComments(id) {
     S.sheetPlay = id;
-    openSheet('Comments', '<div class="empty">Loading…</div>');
+    openSheet('Comments', skel(4, 'rows'));
     try {
       const [{ play }, { comments }] = await Promise.all([api(`/api/plays/${encodeURIComponent(id)}`), api(`/api/plays/${encodeURIComponent(id)}/comments`)]);
       S.sheetObj = play;
@@ -1191,7 +1259,7 @@
         case 'filter': S.feed.filter = t.dataset.f; document.querySelectorAll('[data-act="filter"]').forEach((b) => { b.classList.toggle('on', b === t); b.setAttribute('aria-selected', b === t); }); if (S.feed.filter === 'mine') await loadMyLineupIds(); loadFeed(); break;
         case 'more': loadFeed(true); break;
         case 'show-new': S.feed.plays = S.pending.concat(S.feed.plays); S.pending = []; renderFeedList(); window.scrollTo({ top: 0 }); break;
-        case 'gtab': gameTab = t.dataset.t; showGame(S.feed.game); break;
+        case 'gtab': gameTab = t.dataset.t; markEnter(); showGame(S.feed.game); break;
         case 'picker': S.pickerFor = S.pickerFor === id ? null : id; rerenderActions(id); break;
         case 'react': {
           if (!requireUser()) return;
@@ -1213,10 +1281,7 @@
         case 'fmt': {
           S.fmt = t.dataset.v; ls.set('sl-scoring', S.fmt); ls.set('sl-scoring-set', '1');
           document.querySelectorAll('.fmt-seg button').forEach((b) => { b.classList.toggle('on', b.dataset.v === S.fmt); b.setAttribute('aria-checked', b.dataset.v === S.fmt); });
-          if ($('#feedList')) renderFeedList();
-          if ($('#plList')) drawPlayers();
-          if (currentRoute() === 'team') drawTeam();
-          renderLive();
+          swap(() => { if ($('#feedList')) renderFeedList(); if ($('#plList')) drawPlayers(); if (currentRoute() === 'team') drawTeam(); renderLive(); });
           break;
         }
         case 'lg-refresh': { const b = t; b.disabled = true; await loadLeagues(true); b.disabled = false; drawLeagues(); break; }
@@ -1239,7 +1304,7 @@
           toast('Pick saved. You can change it until kickoff.');
           break;
         }
-        case 'lutab': S.luTab = t.dataset.t; showLineups(); break;
+        case 'lutab': S.luTab = t.dataset.t; markEnter(); showLineups(); break;
         case 'add': addToDraft(t.dataset.pid); break;
         case 'pos': S.pos = t.dataset.p; renderBuilder(); break;
         case 'unpick': {
@@ -1266,6 +1331,8 @@
     } catch (err) { toast(err.message); }
   });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !$('#sheet').hidden) closeSheet(); });
+  document.addEventListener('click', () => glideSoon());
+  new MutationObserver(() => glideSoon()).observe(document.body, { childList: true, subtree: true });
   // ---------- Customize (same options and storage keys as sidelineff.com) ----------
   const ACCENTS = window.SL_ACCENTS || {};
   const LOOKS = [
