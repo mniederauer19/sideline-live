@@ -209,6 +209,31 @@ app.get('/api/players', (req, res) => {
   res.json({ week, players });
 });
 
+// One team's page: everyone's fantasy points this week, plus season totals (NFL teams, from nflverse).
+app.get('/api/teams/:abbr', (req, res) => {
+  const abbr = String(req.params.abbr || '').toUpperCase(), week = weekOf(req);
+  const g = engine.listGames(week).find((x) => x.home.abbr === abbr || x.away.abbr === abbr) || null;
+  const team = g ? (g.home.abbr === abbr ? g.home : g.away) : null;
+  const out = new Map();
+  if (!g?.extra) for (const p of nflverse.byTeam(abbr)) {
+    const done = p.weeks.filter((w) => w.week < week);
+    out.set(String(p.id), { id: p.id, name: p.name, pos: p.pos, team: abbr, headshot: p.headshot || '', ppr: 0, line: '', s: {},
+      // Season so far, before the week being shown (that week's points come from the live box score).
+      played: false, games: done.length, seasonPpr: +done.reduce((a, w) => a + w.ppr, 0).toFixed(1), seasonRec: done.reduce((a, w) => a + (w.rec || 0), 0) });
+  }
+  if (g) for (const t of engine.boxFor(g.id).values()) {
+    if (t.team !== abbr && nflverse.get(t.id)?.team !== abbr) continue;
+    const nv = nflverse.get(t.id), prev = out.get(String(t.id)) || { games: 0, seasonPpr: 0, seasonRec: 0 };
+    if (!nv && !t.name) continue;
+    out.set(String(t.id), { ...prev, id: t.id, name: nv?.name || t.name, pos: nv?.pos || prev.pos || (g.extra ? '' : 'K'), team: abbr,
+      headshot: nv?.headshot || t.headshot || prev.headshot || '', ppr: t.ppr, line: t.line, s: t.s || {}, played: true });
+  }
+  const players = [...out.values()].filter((p) => p.played || p.seasonPpr > 0)
+    .sort((a, b) => (b.seasonPpr + b.ppr) - (a.seasonPpr + a.ppr));
+  const others = engine.listGames(week).flatMap((x) => [x.home, x.away]).map((t) => t.abbr).filter((x) => x !== abbr).sort();
+  res.json({ week, abbr, team, game: g, college: !!g?.extra, players, others });
+});
+
 // ---------- feed ----------
 const EMOJIS = ['🔥', '😂', '😭', '🤯', '💀', '👏'];
 function social(ids, userId) {

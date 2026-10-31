@@ -105,7 +105,7 @@ async function load() {
       agg.set(r.player_id, a);
     }
     const wk = Number(r.week);
-    a.weeks.push({ week: wk, ppr: n(r.fantasy_points_ppr) });
+    a.weeks.push({ week: wk, ppr: n(r.fantasy_points_ppr), rec: n(r.receptions) });
     a.tgt += n(r.targets);
     a.teamTgt += teamTargets.get(`${r.team}-${r.week}`) || 0;
     a.carries += n(r.carries);
@@ -144,6 +144,8 @@ async function load() {
       carriesPg: +(a.carries / games).toFixed(1),
       adot: a.tgt ? +(a.airYds / a.tgt).toFixed(1) : 0,
       seasonTds: a.tds,
+      seasonRec: a.rec,
+      seasonPpr: +total.toFixed(1),
       weeks: a.weeks,
       salary: salaryFor(a.pos, ppg, last3Ppg),
     });

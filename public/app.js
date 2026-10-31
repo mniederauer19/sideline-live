@@ -129,6 +129,9 @@
     return `<div class="initials">${p?.pos === 'DST' ? 'D' : initials(p?.name)}</div>`;
   }
 
+  // A team's code as a link to its page
+  const tlink = (abbr) => abbr ? `<a class="tlink" href="#/team/${encodeURIComponent(abbr)}">${esc(abbr)}</a>` : '';
+
   // ---------- me ----------
   async function loadMe() {
     if (!S.token && S.auth?.mode !== 'sideline') {
@@ -415,7 +418,7 @@
     const others = p.players.filter((x) => x !== prim);
     const meta = [when, p.downText ? esc(p.downText) : '', ago(p.ts)].filter(Boolean).map((x) => `<span>${x}</span>`).join('<span>·</span>') + badges(p);
     const who = prim
-      ? `<div class="who-row">${face(prim)}<div><h3 class="pname">${prim.id && prim.pos !== 'DST' ? `<button class="plink" data-act="player" data-pid="${esc(prim.id)}">${esc(prim.name)}</button>` : esc(prim.name)}<small>${esc([prim.pos, prim.team].filter(Boolean).join(' · '))}</small></h3><div class="headline ${p.td ? 'td' : ''}">${esc(p.headline)}</div></div></div>`
+      ? `<div class="who-row">${face(prim)}<div><h3 class="pname">${prim.id && prim.pos !== 'DST' ? `<button class="plink" data-act="player" data-pid="${esc(prim.id)}">${esc(prim.name)}</button>` : esc(prim.name)}<small>${esc(prim.pos || '')}${prim.pos && prim.team ? ' · ' : ''}${tlink(prim.team)}</small></h3><div class="headline ${p.td ? 'td' : ''}">${esc(p.headline)}</div></div></div>`
       : `<div class="who-row"><div><h3 class="pname">${esc(p.headline)}</h3></div></div>`;
     const also = others.length ? `<div class="also"><span class="label">Also on the play</span>${others.map((o) => {
       const ov = adj(o);
@@ -563,7 +566,7 @@
   let gameTab = 'plays';
   function gameHeader(g) {
     const st = g.state === 'in' ? `<div class="st live">${esc(g.detail)}</div>` : `<div class="st">${g.state === 'post' ? 'Final' : esc(kickoff(g, true))}</div>`;
-    const side = (t, o, r) => `<div class="gh-team ${r ? 'r' : ''} ${g.state === 'post' && t.score < o.score ? 'lose' : ''}">${tlogo(t.abbr)}<div><div class="big">${g.state === 'pre' ? '' : t.score}</div><div class="nm">${esc(t.name)} ${esc(t.record || '')}</div></div></div>`;
+    const side = (t, o, r) => `<div class="gh-team ${r ? 'r' : ''} ${g.state === 'post' && t.score < o.score ? 'lose' : ''}"><a href="#/team/${encodeURIComponent(t.abbr)}" aria-label="${esc(t.name || t.abbr)} team page">${tlogo(t.abbr)}</a><div><div class="big">${g.state === 'pre' ? '' : t.score}</div><div class="nm"><a class="tlink" href="#/team/${encodeURIComponent(t.abbr)}">${esc(t.name)}</a> ${esc(t.record || '')}</div></div></div>`;
     return `<div class="game-head">${side(g.away, g.home)}<div class="gh-mid">${st}<div class="ln">${esc(lineText(g))}</div>${g.state === 'in' && g.downDistance ? `<div class="ln">${esc(g.downDistance)}</div>` : ''}</div>${side(g.home, g.away, true)}</div>`;
   }
   async function showGame(id) {
@@ -588,7 +591,7 @@
       const wp = r.homeWp != null ? `<div class="wp-bar" aria-label="Win probability"><i style="width:${100 - r.homeWp}%;background:${esc(g.away.color || '#888')}"></i><i style="width:${r.homeWp}%;background:${esc(g.home.color || '#ccc')}"></i></div>
         <div class="wp-label"><span>${esc(g.away.abbr)} ${fmt(100 - r.homeWp)}%</span><span>Win probability</span><span>${esc(g.home.abbr)} ${fmt(r.homeWp)}%</span></div>` : '';
       body.innerHTML = `${wp}<table class="box"><thead><tr><th>Player</th><th class="num">Season avg</th><th class="num">PPR today</th></tr></thead><tbody>
-        ${r.players.map((p) => `<tr><td><div class="nm">${esc(p.name)}<span class="pos">${esc(p.pos)} · ${esc(p.team)}</span></div><div class="sub">${esc(p.line)}</div></td><td class="num sub">${p.ppg != null ? `${fmt(p.ppg)}/g` : ''}</td><td class="num pp">${fmt(p.ppr)}</td></tr>`).join('')
+        ${r.players.map((p) => `<tr><td><div class="nm">${esc(p.name)}<span class="pos">${esc(p.pos)} · ${tlink(p.team)}</span></div><div class="sub">${esc(p.line)}</div></td><td class="num sub">${p.ppg != null ? `${fmt(p.ppg)}/g` : ''}</td><td class="num pp">${fmt(p.ppr)}</td></tr>`).join('')
           || '<tr><td colspan="3" class="sub">Fantasy points show up once the game kicks off.</td></tr>'}
       </tbody></table>`;
     } else {
@@ -760,10 +763,56 @@
       .map((p) => ({ ...p, pts: fpts(p) })).sort((a, b) => b.pts - a.pts || (b.ppg || 0) - (a.ppg || 0)).slice(0, 200);
     list.innerHTML = rows.length ? `<table class="box players"><thead><tr><th style="width:36px">#</th><th>Player</th><th class="num">Avg</th><th class="num">${unit()}</th></tr></thead><tbody>
       ${rows.map((p, i) => `<tr class="${S.myLineupIds.has(String(p.id)) || S.myFantasyIds.has(String(p.id)) ? 'mine' : ''}"><td class="sub">${i + 1}</td>
-        <td><div class="nm">${face(p, 'face sm')}<span><button class="plink" data-act="player" data-pid="${esc(p.id)}">${esc(p.name)}</button>${p.inj ? ` <span class="inj">${esc(p.inj)}</span>` : ''}<span class="pos">${esc(p.pos)} · ${esc(p.team)}${p.opp ? ` ${p.home ? 'vs' : '@'} ${esc(p.opp)}` : ''}</span></span></div>
+        <td><div class="nm">${face(p, 'face sm')}<span><button class="plink" data-act="player" data-pid="${esc(p.id)}">${esc(p.name)}</button>${p.inj ? ` <span class="inj">${esc(p.inj)}</span>` : ''}<span class="pos">${esc(p.pos)} · ${tlink(p.team)}${p.opp ? ` ${p.home ? 'vs' : '@'} ${tlink(p.opp)}` : ''}</span></span></div>
         <div class="sub">${esc(p.line || (p.gameState === 'pre' ? (p.kickoff ? `Kicks off ${kick(p.kickoff)}` : 'Not started') : p.gameState === 'post' ? 'Final' : ''))}</div></td>
         <td class="num sub">${p.ppg != null ? fmt(p.ppg) : '—'}</td><td class="num pp">${fmt(p.pts || 0)}</td></tr>`).join('')}
       </tbody></table>` : `<div class="empty">${S.pl.rows.length ? 'No players match.' : '<b>No players yet</b>They show up once this week\'s slate loads.'}</div>`;
+  }
+
+  // ---------- one team ----------
+  S.tm = { pos: 'ALL', sort: 'season' };
+  function currentTeam() { const m = location.hash.match(/^#\/team\/([^/]+)/); return m ? decodeURIComponent(m[1]).toUpperCase() : null; }
+  async function showTeam(abbr) {
+    view.innerHTML = '<div class="empty">Loading team…</div>';
+    await loadTeam(abbr);
+  }
+  async function loadTeam(abbr = currentTeam()) {
+    if (!abbr) return;
+    try { S.tm.data = await api(`/api/teams/${encodeURIComponent(abbr)}${S.sel ? `?week=${S.sel}` : ''}`); S.tm.abbr = abbr; }
+    catch (e) { view.innerHTML = `<div class="empty"><b>Team not found</b>${esc(e.message)}<a href="#/players">All players</a></div>`; return; }
+    drawTeam();
+  }
+  // Season points in the chosen format: season PPR minus the reception points the format doesn't give.
+  const seasonPts = (p) => p.seasonPpr - (p.seasonRec || 0) * (1 - recVal());
+  function drawTeam() {
+    const d = S.tm.data; if (!d || currentRoute() !== 'team') return;
+    const t = d.team || teamInfo(d.abbr), g = d.game;
+    const opp = g ? (g.home.abbr === d.abbr ? g.away : g.home) : null;
+    const status = g ? (g.state === 'in' ? `<span class="tp-live"><i></i>${esc(g.detail || 'Live')}</span>` : g.state === 'post' ? 'Final' : esc(kickoff(g, true))) : '';
+    const mine = g ? (g.home.abbr === d.abbr ? g.home : g.away) : null;
+    const gameLine = g ? `<a class="tp-game" href="#/game/${esc(g.id)}">${g.home.abbr === d.abbr ? 'vs' : '@'} ${tlogo(opp.abbr)}<b>${esc(opp.abbr)}</b>${g.state !== 'pre' ? `<span class="tp-sc">${mine.score}–${opp.score}</span>` : ''}<span class="sub">${status}</span></a>` : '<span class="sub">No game this week</span>';
+    const rows = d.players.filter((p) => S.tm.pos === 'ALL' || p.pos === S.tm.pos)
+      .map((p) => ({ ...p, wk: fpts(p), sea: d.college ? 0 : seasonPts(p) }))
+      .map((p) => ({ ...p, tot: p.sea + p.wk, avg: (p.games + (p.played ? 1 : 0)) ? (p.sea + p.wk) / (p.games + (p.played ? 1 : 0)) : 0 }))
+      .sort((a, b) => S.tm.sort === 'week' || d.college ? b.wk - a.wk || b.tot - a.tot : b.tot - a.tot || b.wk - a.wk);
+    const teamWk = rows.reduce((a, p) => a + p.wk, 0);
+    const pos = ['ALL', 'QB', 'RB', 'WR', 'TE', 'K'].filter((x) => x === 'ALL' || d.players.some((p) => p.pos === x));
+    const sortBtn = (k, l) => `<button class="pill ${S.tm.sort === k ? 'on' : ''}" data-act="tmsort" data-v="${k}">${l}</button>`;
+    view.innerHTML = `<div class="tp-head" style="--tc:${esc(t.color || '#33415a')}">
+        <div class="tp-id">${tlogo(d.abbr)}<div><div class="label">${esc(weekLabel())}${d.college ? ' · College' : ''}</div><h1>${esc(t.name || d.abbr)}</h1><div class="sub">${esc(t.record || '')}</div></div></div>
+        <div class="tp-side">${gameLine}<div class="tp-total"><b>${fmt(teamWk)}</b> ${unit()} this week</div><div class="fmt-row">${fmtSeg()}</div></div>
+      </div>
+      <div class="tp-bar"><div class="pills seg" id="tmPos">${pos.map((x) => `<button class="pill ${S.tm.pos === x ? 'on' : ''}" data-p="${x}">${x === 'ALL' ? 'All' : x}</button>`).join('')}</div>
+        ${d.college ? '' : `<div class="pills seg">${sortBtn('season', 'Season')}${sortBtn('week', 'This week')}</div>`}</div>
+      ${rows.length ? `<div class="tp-scroll"><table class="box players tp-table"><thead><tr><th>Player</th><th class="num">${d.college ? unit() : 'This week'}</th>${d.college ? '' : '<th class="num">Season</th><th class="num">Per game</th><th class="num gp">GP</th>'}</tr></thead><tbody>
+        ${rows.map((p) => `<tr class="${S.myLineupIds.has(String(p.id)) || S.myFantasyIds.has(String(p.id)) ? 'mine' : ''}">
+          <td><div class="nm">${face(p, 'face sm')}<span><button class="plink" data-act="player" data-pid="${esc(p.id)}">${esc(p.name)}</button><span class="pos">${esc(p.pos || '')}</span></span></div>
+          <div class="sub">${esc(p.line || (p.played ? '' : g && g.state === 'pre' ? 'Not started' : g ? 'No stats' : ''))}</div></td>
+          <td class="num ${d.college ? 'pp' : ''}">${p.played || (g && g.state !== 'pre') ? fmt(p.wk) : '–'}</td>
+          ${d.college ? '' : `<td class="num pp">${fmt(p.tot)}</td><td class="num sub">${fmt(p.avg)}</td><td class="num sub gp">${p.games + (p.played ? 1 : 0)}</td>`}</tr>`).join('')}
+      </tbody></table></div>` : '<div class="empty">No fantasy points for this team yet.</div>'}
+      ${d.others?.length ? `<div class="tp-others"><span class="label">Other teams this week</span><div>${d.others.map((x) => `<a class="tp-chip" href="#/team/${encodeURIComponent(x)}">${tlogo(x)}${esc(x)}</a>`).join('')}</div></div>` : ''}`;
+    $('#tmPos').addEventListener('click', (e) => { const b = e.target.closest('[data-p]'); if (!b) return; S.tm.pos = b.dataset.p; drawTeam(); });
   }
 
   // ---------- one player's day ----------
@@ -907,6 +956,7 @@
     try {
       switch (act) {
         case 'go': location.hash = t.dataset.href; break;
+        case 'tmsort': S.tm.sort = t.dataset.v; drawTeam(); break;
         case 'week': selectWeek(Number(t.dataset.w)); break;
         case 'cz': setSetting(t.dataset.k, t.dataset.v); break;
         case 'join': e.preventDefault(); requireUser(); break;
@@ -937,6 +987,7 @@
           document.querySelectorAll('.fmt-seg button').forEach((b) => { b.classList.toggle('on', b.dataset.v === S.fmt); b.setAttribute('aria-checked', b.dataset.v === S.fmt); });
           if ($('#feedList')) renderFeedList();
           if ($('#plList')) drawPlayers();
+          if (currentRoute() === 'team') drawTeam();
           renderLive();
           break;
         }
@@ -1105,6 +1156,7 @@
       renderLive();
       alertFor(p);
       if (currentRoute() === 'players' && Date.now() - S.pl.at > 8000) loadPlayers();
+      if (currentRoute() === 'team' && S.tm.data?.game?.id === p.gameId && Date.now() - (S.tm.at || 0) > 5000) { S.tm.at = Date.now(); loadTeam(); }
       if (!$('#feedList') || !matchesFeed(p)) return;
       if (S.feed.plays.some((x) => x.id === p.id)) return;
       if (window.scrollY < 300 && !S.pending.length) {
@@ -1158,7 +1210,7 @@
   function currentGameId() { const m = location.hash.match(/^#\/game\/(.+)$/); return m ? decodeURIComponent(m[1]) : null; }
   function route() {
     const r = currentRoute();
-    document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('on', a.dataset.nav === r || (r === 'game' && a.dataset.nav === 'feed')));
+    document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('on', a.dataset.nav === r || (r === 'game' && a.dataset.nav === 'feed') || (r === 'team' && a.dataset.nav === 'players')));
     S.pickerFor = null;
     renderStrip();
     if (r === 'game') { showGame(currentGameId()); }
@@ -1166,6 +1218,7 @@
     else if (r === 'lineups') showLineups();
     else if (r === 'ranks') showRanks();
     else if (r === 'players') showPlayers();
+    else if (r === 'team') showTeam(currentTeam());
     else { gameTab = 'plays'; showFeed(); }
     window.scrollTo({ top: 0 });
   }
