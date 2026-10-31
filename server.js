@@ -6,6 +6,7 @@ const db = require('./src/db');
 const nflverse = require('./src/nflverse');
 const engine = require('./src/engine');
 const sidelineAuth = require('./src/sideline-auth');
+const tradeValues = require('./src/trade-values');
 const persist = require('./src/persist');
 const { isOffensive } = require('./src/moderation');
 
@@ -72,7 +73,8 @@ function tier(credits) {
   return 'Practice squad';
 }
 function record(userId) {
-  const r = db.prepare(`SELECT SUM(result='win') w, SUM(result='loss') l, SUM(result='push') p FROM picks WHERE user_id=?`).get(userId);
+  // Your record is game winners only; spread and total picks earn credits but don't count here
+  const r = db.prepare(`SELECT SUM(result='win') w, SUM(result='loss') l, SUM(result='push') p FROM picks WHERE user_id=? AND market='winner'`).get(userId);
   return { w: r.w || 0, l: r.l || 0, p: r.p || 0 };
 }
 function rankOf(credits) {
@@ -139,15 +141,18 @@ app.post('/api/picks', needUser, (req, res) => {
   if (!pickOpen(g)) return res.status(400).json({ error: 'Picks for this game are locked.' });
   let line;
   if (market === 'spread') {
-    if (![g.home.abbr, g.away.abbr].includes(selection) || g.odds.spread == null) return res.status(400).json({ error: 'Choose a team.' });
+    if (![g.home.abbr, g.away.abbr].includes(selection) || g.odds?.spread == null) return res.status(400).json({ error: 'Choose a team.' });
     line = g.odds.spread;
   } else if (market === 'total') {
-    if (!['over', 'under'].includes(selection) || g.odds.total == null) return res.status(400).json({ error: 'Choose over or under.' });
+    if (!['over', 'under'].includes(selection) || g.odds?.total == null) return res.status(400).json({ error: 'Choose over or under.' });
     line = g.odds.total;
+  } else if (market === 'winner') {
+    if (![g.home.abbr, g.away.abbr].includes(selection)) return res.status(400).json({ error: 'Choose a team.' });
+    line = 0; // no line: just the winner
   } else return res.status(400).json({ error: 'Unknown market.' });
   db.prepare(`INSERT INTO picks (user_id, game_id, market, selection, fav, line, created_at) VALUES (?,?,?,?,?,?,?)
     ON CONFLICT(user_id, game_id, market) DO UPDATE SET selection=excluded.selection, fav=excluded.fav, line=excluded.line, created_at=excluded.created_at`)
-    .run(req.user.id, g.id, market, selection, g.odds.fav, line, Date.now());
+    .run(req.user.id, g.id, market, selection, market === 'winner' ? null : g.odds?.fav ?? null, line, Date.now());
   persist.upsert('picks', { user_id: req.user.id, game_id: g.id, market });
   engine.bus.emit('splits', { gameId: g.id, splits: pickSplits(g.id) });
   res.json({ ok: true, splits: pickSplits(g.id) });
@@ -418,8 +423,29 @@ function slatePlayers() {
     .sort((a, b) => b.salary - a.salary || b.ppg - a.ppg);
 }
 
+// Salaries follow sidelineff.com's trade analyzer values. The cap is what an average
+// 12-team PPR starting lineup costs (the average QB1-12, RB1-24, WR1-24 and TE1-12 among
+// this week's players, plus the average flex: the next 12 RB/WR/TE), so a lineup full of
+// stars doesn't fit and you have to find value.
+const SAL_MIN = 2000, SAL_MAX = 10000;
+function pricedSlate() {
+  const list = slatePlayers();
+  if (!tradeValues.state.players.size) return { players: list, cap: cfg.SALARY_CAP, pricing: 'stats' };
+  for (const p of list) p.value = tradeValues.valueOf(p.name, p.pos) ?? 0;
+  const top = Math.max(1, ...list.map((p) => p.value));
+  for (const p of list) p.salary = Math.round((SAL_MIN + (SAL_MAX - SAL_MIN) * Math.min(1, p.value / top)) / 100) * 100;
+  const by = (pos) => list.filter((p) => p.pos === pos).sort((a, b) => b.value - a.value);
+  const avg = (arr) => (arr.length ? arr.reduce((a, p) => a + p.salary, 0) / arr.length : SAL_MIN);
+  const rb = by('RB'), wr = by('WR'), te = by('TE');
+  const flex = [...rb.slice(24), ...wr.slice(24), ...te.slice(12)].sort((a, b) => b.value - a.value);
+  const cap = avg(by('QB').slice(0, 12)) + 2 * avg(rb.slice(0, 24)) + 2 * avg(wr.slice(0, 24)) + avg(te.slice(0, 12)) + avg(flex.slice(0, 12));
+  list.sort((a, b) => b.salary - a.salary || b.ppg - a.ppg);
+  return { players: list, cap: Math.round(cap / 500) * 500, pricing: 'trade', valuesAsOf: tradeValues.state.asOf };
+}
+
 app.get('/api/slate', (req, res) => {
-  res.json({ ...engine.currentWeek(), cap: cfg.SALARY_CAP, slots: cfg.ROSTER_SLOTS, slotPos: SLOT_POS, players: slatePlayers() });
+  const s = pricedSlate();
+  res.json({ ...engine.currentWeek(), cap: s.cap, pricing: s.pricing, valuesAsOf: s.valuesAsOf || null, slots: cfg.ROSTER_SLOTS, slotPos: SLOT_POS, players: s.players });
 });
 
 function liveLineup(players) {
@@ -446,7 +472,8 @@ app.get('/api/lineups/me', needUser, (req, res) => {
 app.post('/api/lineups', needUser, (req, res) => {
   const w = engine.currentWeek();
   const sel = Array.isArray(req.body?.players) ? req.body.players : [];
-  const pool = new Map(slatePlayers().map((p) => [p.id, p]));
+  const priced = pricedSlate();
+  const pool = new Map(priced.players.map((p) => [p.id, p]));
   const existing = db.prepare('SELECT players FROM lineups WHERE user_id=? AND season=? AND week=?').get(req.user.id, w.season, w.week);
   const prev = new Map(existing ? JSON.parse(existing.players).map((p) => [p.slot, String(p.id)]) : []);
 
@@ -468,7 +495,7 @@ app.post('/api/lineups', needUser, (req, res) => {
     salary += p.salary;
     clean.push({ slot, id: p.id });
   }
-  if (salary > cfg.SALARY_CAP) return res.status(400).json({ error: `You're $${(salary - cfg.SALARY_CAP).toLocaleString()} over the cap.` });
+  if (salary > priced.cap) return res.status(400).json({ error: `You're $${(salary - priced.cap).toLocaleString()} over the cap.` });
   const now = Date.now();
   db.prepare(`INSERT INTO lineups (user_id, season, week, players, salary, created_at, updated_at) VALUES (?,?,?,?,?,?,?)
     ON CONFLICT(user_id, season, week) DO UPDATE SET players=excluded.players, salary=excluded.salary, updated_at=excluded.updated_at`)
@@ -596,6 +623,7 @@ process.on('SIGTERM', async () => {
   await persist.restoreWithRetry();
   cleanUpOffensive();
   nflverse.start();
+  tradeValues.start();
   engine.start();
   if (!cfg.DEMO) sidelineAuth.selfCheck().then((st) => console.log(`[auth] sidelineff.com login check: ${st.lastStatus || st.lastError}`));
   app.listen(cfg.PORT, () => console.log(`Sideline Live on http://localhost:${cfg.PORT}${cfg.DEMO ? '  (DEMO MODE)' : ''}`));

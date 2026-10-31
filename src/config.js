@@ -34,7 +34,8 @@ module.exports = {
 
   // Weekly salary-cap lineups
   SALARY_CAP: num(process.env.SALARY_CAP, 50000),
-  ROSTER_SLOTS: ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'WR3', 'TE', 'FLEX'],
+  // A standard 12-team PPR starting lineup: QB, 2 RB, 2 WR, TE, FLEX
+  ROSTER_SLOTS: ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX'],
 
   // Login: 'local' = pick a username on this site, 'sideline' = use sidelineff.com accounts
   AUTH_MODE: process.env.AUTH_MODE === 'sideline' ? 'sideline' : 'local',

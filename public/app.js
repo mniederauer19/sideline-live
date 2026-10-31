@@ -651,9 +651,9 @@
       const tot = Object.values(s).reduce((a, b) => a + b, 0);
       return tot ? `${Math.round((s[sel] || 0) / tot * 100)}% picked` : '';
     };
-    const opt = (m, sel, label) => {
+    const opt = (m, sel, label, logo = '') => {
       const on = mine[m]?.selection === sel;
-      return `<button class="opt ${on ? 'on' : ''}" ${open ? '' : 'disabled'} data-act="pick" data-game="${esc(g.id)}" data-m="${m}" data-sel="${esc(sel)}" aria-pressed="${on}">${esc(label)}<small>${split(m, sel)}</small></button>`;
+      return `<button class="opt ${on ? 'on' : ''} ${logo ? 'has-logo' : ''}" ${open ? '' : 'disabled'} data-act="pick" data-game="${esc(g.id)}" data-m="${m}" data-sel="${esc(sel)}" aria-pressed="${on}">${logo ? `<span class="opt-team">${tlogo(logo)}${esc(label)}</span>` : esc(label)}<small>${split(m, sel)}</small></button>`;
     };
     const res = (m) => {
       const p = mine[m];
@@ -661,22 +661,22 @@
       const txt = p.result === 'win' ? `Won · +${p.delta} credits` : p.result === 'loss' ? `Lost · ${p.delta} credits` : 'Push · no change';
       return `<span class="result ${p.result}">${esc(txt)}</span>`;
     };
-    if (!g.odds) return `<div class="pick-game"><div class="pg-top"><h3>${esc(g.away.abbr)} @ ${esc(g.home.abbr)}</h3><span class="when">${gameStatus(g)}</span></div><p class="rules">No line posted yet.</p></div>`;
-    const sp = (t) => (!g.odds.fav ? 'PK' : t === g.odds.fav ? `−${g.odds.spread}` : `+${g.odds.spread}`);
+    const sp = (t) => (!g.odds?.fav ? 'PK' : t === g.odds.fav ? `−${g.odds.spread}` : `+${g.odds.spread}`);
     const locked = !open && g.state === 'pre' ? '' : !open ? ' · locked' : '';
-    return `<div class="pick-game">
-      <div class="pg-top"><h3><a href="#/game/${esc(g.id)}" style="color:inherit">${esc(g.away.abbr)} @ ${esc(g.home.abbr)}</a></h3><span class="when">${gameStatus(g)}${locked}</span></div>
-      <div class="markets">
-        <div class="market"><span class="lbl">Spread${mine.spread && !open ? ` · your line ${mine.spread.selection === mine.spread.fav ? '−' : '+'}${mine.spread.line}` : ''}</span>${opt('spread', g.away.abbr, `${g.away.abbr} ${sp(g.away.abbr)}`)}${opt('spread', g.home.abbr, `${g.home.abbr} ${sp(g.home.abbr)}`)}${res('spread')}</div>
-        <div class="market"><span class="lbl">Total points</span>${opt('total', 'over', `Over ${g.odds.total}`)}${opt('total', 'under', `Under ${g.odds.total}`)}${res('total')}</div>
-      </div>
-    </div>`;
+    const score = (t) => (g.state === 'pre' ? '' : ` <b class="pg-score">${t.score}</b>`);
+    const head = `<div class="pg-top"><h3><a href="#/game/${esc(g.id)}" class="pg-teams" style="color:inherit"><span class="pg-team">${tlogo(g.away.abbr)}${esc(g.away.abbr)}${score(g.away)}</span><span class="pg-at">@</span><span class="pg-team">${tlogo(g.home.abbr)}${esc(g.home.abbr)}${score(g.home)}</span></a></h3><span class="when">${gameStatus(g)}${locked}</span></div>`;
+    const winner = `<div class="market winner"><span class="lbl">Winner <em>counts toward your record</em></span>${opt('winner', g.away.abbr, g.away.abbr, g.away.abbr)}${opt('winner', g.home.abbr, g.home.abbr, g.home.abbr)}${res('winner')}</div>`;
+    const lines = g.odds && g.odds.spread != null
+      ? `<div class="market"><span class="lbl">Spread <em>credits only</em>${mine.spread && !open ? ` · your line ${mine.spread.selection === mine.spread.fav ? '−' : '+'}${mine.spread.line}` : ''}</span>${opt('spread', g.away.abbr, `${g.away.abbr} ${sp(g.away.abbr)}`, g.away.abbr)}${opt('spread', g.home.abbr, `${g.home.abbr} ${sp(g.home.abbr)}`, g.home.abbr)}${res('spread')}</div>
+        ${g.odds.total != null ? `<div class="market"><span class="lbl">Total points <em>credits only</em></span>${opt('total', 'over', `Over ${g.odds.total}`)}${opt('total', 'under', `Under ${g.odds.total}`)}${res('total')}</div>` : ''}`
+      : '<p class="rules">No Vegas line posted yet for the spread and total.</p>';
+    return `<div class="pick-game">${head}<div class="markets three">${winner}${lines}</div></div>`;
   }
   async function showPicks() {
     const me = S.me;
-    view.innerHTML = `${pageHead(weekLabel(), 'Free picks', 'Vegas spread and total<br>Free to play · picks lock at kickoff')}
-      ${me ? `<div class="wallet"><div><b class="amber">${me.credits.toLocaleString()}</b><span>Credits</span></div><div><b>#${me.rank}</b><span>${esc(me.tier)}</span></div><div><b>${me.record.w}-${me.record.l}${me.record.p ? `-${me.record.p}` : ''}</b><span>Record</span></div></div>` : ''}
-      <p class="rules">Pick against the Vegas spread and total. Right pick +100 credits, wrong pick −50, push 0. Picks lock at kickoff. Credits decide your rank.</p>
+    view.innerHTML = `${pageHead(weekLabel(), 'Free picks', 'Game winners, spreads and totals<br>Free to play · picks lock at kickoff')}
+      ${me ? `<div class="wallet"><div><b class="amber">${me.credits.toLocaleString()}</b><span>Credits</span></div><div><b>#${me.rank}</b><span>${esc(me.tier)}</span></div><div><b>${me.record.w}-${me.record.l}${me.record.p ? `-${me.record.p}` : ''}</b><span>Winner record</span></div></div>` : ''}
+      <p class="rules">Pick the winner of each game: that's your record. Spread and total picks are separate and don't count toward your record. Every right pick is +100 credits, a wrong pick −50, a push 0, and credits decide your rank. Picks lock at kickoff.</p>
       <div id="pickList"></div>`;
     await refreshGames();
     $('#pickList').innerHTML = S.games.map(pickGame).join('') || '<div class="empty"><b>No games this week yet</b></div>';
@@ -693,7 +693,7 @@
   const SLOT_POS = { QB: ['QB'], RB1: ['RB'], RB2: ['RB'], WR1: ['WR'], WR2: ['WR'], WR3: ['WR'], TE: ['TE'], FLEX: ['RB', 'WR', 'TE'] };
   const SLOT_LABEL = { QB: 'QB', RB1: 'RB', RB2: 'RB', WR1: 'WR', WR2: 'WR', WR3: 'WR', TE: 'TE', FLEX: 'FLEX' };
   async function showLineups() {
-    view.innerHTML = `${pageHead(weekLabel(), 'Weekly lineups', `$${(S.slate?.cap || 50000).toLocaleString()} cap · QB, 2 RB, 3 WR, TE, FLEX<br>Scored live in PPR`)}
+    view.innerHTML = `${pageHead(weekLabel(), 'Weekly lineups', `QB, 2 RB, 2 WR, TE, FLEX · a 12-team PPR lineup<br>Salaries from sidelineff.com trade values`)}
       <div class="pills"><button class="pill ${S.luTab === 'build' ? 'on' : ''}" data-act="lutab" data-t="build">My lineup</button><button class="pill ${S.luTab === 'top' ? 'on' : ''}" data-act="lutab" data-t="top">Top lineups</button></div>
       <div id="luBody"></div>`;
     if (S.luTab === 'top') return renderTopLineups();
@@ -730,7 +730,7 @@
       const canAdd = !p.locked && !isIn && S.slate.slots.some((s) => !S.draft[s] && S.slate.slotPos[s].includes(p.pos));
       return `<div class="prow">${p.headshot ? `<img src="${esc(p.headshot)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;ph&quot;></div>'">` : '<div class="ph"></div>'}
         <div class="nm">${esc(p.name)} <small>${esc(p.pos)} · ${esc(p.team)} ${p.home ? 'vs' : '@'} ${esc(p.opp)} · ${fmt(p.ppg)} PPR/g${p.tgtShare && p.pos !== 'QB' ? ` · ${fmt(p.tgtShare, 0)}% tgt` : ''}${p.locked ? ' · 🔒 started' : ''}</small></div>
-        <div class="sal">${money(p.salary)}<small>${fmt(p.ppg / (p.salary / 1000), 2)} pts/$1k</small></div>
+        <div class="sal">${money(p.salary)}<small>${p.value != null ? `trade value ${fmt(p.value, p.value < 10 ? 1 : 0)}` : `${fmt(p.ppg / (p.salary / 1000), 2)} pts/$1k`}</small></div>
         <button class="add-btn ${isIn ? 'in' : ''}" data-act="${isIn ? 'unpick' : 'add'}" data-pid="${esc(p.id)}" ${isIn || canAdd ? '' : 'disabled'} aria-label="${isIn ? 'Remove' : 'Add'} ${esc(p.name)}">${isIn ? '✓' : '+'}</button></div>`;
     }).join('');
     $('#luBody').innerHTML = `<div class="lu-grid build">
@@ -1105,7 +1105,7 @@
       html += lineup
         ? `<section><span class="label">My lineup · live</span>${lineup.players.map((p) => `<div class="mini"><em>${esc(SLOT_LABEL[p.slot])}</em><span class="who">${esc(p.name)}</span><span class="v ${p.gameState !== 'pre' ? 'amber' : ''}">${p.gameState === 'pre' ? '–' : fmt(p.points)}</span></div>`).join('')}
             <div class="total"><span class="label" style="margin:0">Total PPR</span><b>${fmt(lineup.points)}</b></div></section>`
-        : `<section><span class="label">My lineup</span><h2>Build this week's team</h2><p>Pick eight players under the $50,000 cap. They score live with every play.</p><a class="btn" href="#/lineups">Build lineup</a></section>`;
+        : `<section><span class="label">My lineup</span><h2>Build this week's team</h2><p>Pick a QB, 2 RBs, 2 WRs, a TE and a flex under the cap. Salaries follow sidelineff.com's trade values, so a team of stars won't fit.</p><a class="btn" href="#/lineups">Build lineup</a></section>`;
     } else {
       html += '<section><span class="label">Play along</span><h2>Join free</h2><p>Pick a username to react to plays, make free picks and build a weekly lineup.</p><button class="btn" data-act="join">Join free</button></section>';
     }

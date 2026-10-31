@@ -969,3 +969,16 @@ html[data-look="classic"] .lg-top h2 { text-transform: uppercase; }
 .acct-stats b { font: var(--stat-w) 26px/1 var(--stat); color: var(--ink); }
 .acct-stats span { font: var(--label-w) 10px/1 var(--label-font); letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); }
 .acct-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 10px; }
+
+/* picks: team logos, winner pick */
+.pg-teams { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.pg-team { display: inline-flex; align-items: center; gap: 8px; }
+.pg-team .tlogo { width: 28px; height: 28px; font-size: 9px; }
+.pg-at { color: var(--muted); font-size: 0.7em; }
+.pg-score { font: var(--stat-w) 0.9em/1 var(--stat); color: var(--muted); margin-left: 2px; }
+.markets.three { grid-template-columns: repeat(3, 1fr); }
+.market .lbl em { font-style: normal; color: var(--dim); letter-spacing: 0.6px; margin-left: 4px; }
+.market.winner .lbl em { color: var(--gold); }
+.opt-team { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
+.opt-team .tlogo { width: 20px; height: 20px; font-size: 7px; }
+@media (max-width: 900px) { .markets.three { grid-template-columns: 1fr; } }

@@ -572,6 +572,10 @@ async function pollLive() {
 // ---------------- picks grading ----------------
 function gradePick(pick, game) {
   const sh = game.home.score, sa = game.away.score;
+  if (pick.market === 'winner') {
+    if (sh === sa) return 'push';
+    return (sh > sa) === (pick.selection === game.home.abbr) ? 'win' : 'loss';
+  }
   if (pick.market === 'total') {
     const pts = sh + sa;
     if (pts === pick.line) return 'push';

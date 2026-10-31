@@ -71,7 +71,7 @@ CREATE INDEX IF NOT EXISTS comments_play ON comments(play_id, id);
 CREATE TABLE IF NOT EXISTS picks (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id INTEGER NOT NULL, game_id TEXT NOT NULL,
-  market TEXT NOT NULL,          -- spread | total
+  market TEXT NOT NULL,          -- winner | spread | total
   selection TEXT NOT NULL,       -- team abbr | over | under
   fav TEXT, line REAL NOT NULL,  -- line locked at the moment of the pick
   result TEXT,                   -- win | loss | push (null until graded)
