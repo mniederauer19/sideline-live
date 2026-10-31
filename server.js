@@ -315,7 +315,7 @@ app.get('/api/feed', (req, res) => {
   }
   if (req.query.player) { where.push('player_ids LIKE ?'); args.push(`%,${req.query.player},%`); }
   if (req.query.players) {
-    const ids = String(req.query.players).split(',').map((x) => x.replace(/[^0-9]/g, '')).filter(Boolean).slice(0, 40);
+    const ids = String(req.query.players).split(',').map((x) => x.replace(/[^0-9]/g, '')).filter(Boolean).slice(0, 150);
     if (!ids.length) return res.json({ plays: [], next: null });
     where.push(`(${ids.map(() => 'player_ids LIKE ?').join(' OR ')})`);
     args.push(...ids.map((id) => `%,${id},%`));

@@ -632,7 +632,13 @@ function extraList() {
 }
 async function refreshExtras() {
   const now = Date.now();
-  for (const x of extraList()) {
+  const list = extraList();
+  // games taken out of extra-games.json leave the site right away
+  const listed = new Set(list.map((x) => String(x.id)));
+  for (const g of [...games.values()]) {
+    if (g.extra && !listed.has(g.id)) { games.delete(g.id); saveGame({ ...g, until: now }); games.delete(g.id); bus.emit('games', listGames()); }
+  }
+  for (const x of list) {
     const until = Date.parse(x.until || '') || 0;
     if (now > until) { if (games.has(String(x.id))) games.delete(String(x.id)); continue; }
     const have = games.get(String(x.id));
@@ -667,7 +673,7 @@ function start() {
   // restore games from db so the site works immediately after a restart
   for (const r of db.prepare('SELECT data, synced_at FROM games').all()) {
     const g = JSON.parse(r.data);
-    if (g.extra && (!(Date.now() < (g.until || 0)) || (g.finalAt && Date.now() - g.finalAt > 30 * 60e3))) continue; // an extra game that's over
+    if (g.extra && (!(Date.now() < (g.until || 0)) || (g.finalAt && Date.now() - g.finalAt > 30 * 60e3) || !extraList().some((x) => String(x.id) === g.id))) continue; // an extra game that's over or removed
     games.set(g.id, g);
     if (r.synced_at) syncedAt.set(g.id, r.synced_at);
   }

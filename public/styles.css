@@ -912,3 +912,29 @@ html[data-look="modern"] .play.is-mine:not(.is-td) { padding-left: 22px; }
   #view.enter *, .bump, .sheet-wrap:not([hidden]) .sheet, .sheet-wrap:not([hidden]) .sheet-scrim { animation: none !important; }
   ::view-transition-old(root), ::view-transition-new(root) { animation: none; }
 }
+
+/* =====================================================================
+   MY TEAMS: leagues synced on sidelineff.com
+   ===================================================================== */
+.lg-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.lg-sort { display: inline-flex; align-items: center; gap: 8px; }
+.lg-sort .label { margin: 0; }
+.lg-sort select { padding: 8px 14px; border-radius: 99px; border: 1px solid var(--line-2); background: var(--bg); color: var(--ink); font: 500 13px/1.2 var(--body); }
+.lg-ago { margin-left: auto; color: var(--muted); font-size: 12.5px; }
+.lg-jump { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 14px; scrollbar-width: none; }
+.lg-jump::-webkit-scrollbar { display: none; }
+.lg-jump a { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 8px; padding: 7px 13px; border: 1px solid var(--line); border-radius: 99px; background: var(--card); color: var(--ink-2); font-size: 13px; white-space: nowrap; }
+.lg-jump a:hover { border-color: var(--gold); }
+.lg-jump b { font: 700 13px/1 var(--num); }
+.lg-jump b.up { color: var(--pos); }
+.lg-jump b.down { color: var(--neg); }
+.lg-card { margin: 0 0 28px; scroll-margin-top: 80px; }
+.lg-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 10px; }
+.lg-top h2 { margin: 2px 0 0; font: var(--display-w) 30px/1.05 var(--serif); color: var(--gold); letter-spacing: -0.4px; }
+html[data-look="modern"] .lg-top h2, html[data-look="classic"] .lg-top h2 { color: var(--ink); }
+html[data-look="classic"] .lg-top h2 { text-transform: uppercase; }
+.lg-warn { color: var(--muted); font-size: 12.5px; }
+@media (max-width: 720px) { .lg-ago { flex-basis: 100%; margin-left: 0; } .lg-top h2 { font-size: 24px; } }
+
+.nav .n-short { display: none; }
+@media (max-width: 720px) { .nav .n-full { display: none; } .nav .n-short { display: inline; } .nav a { white-space: nowrap; } }

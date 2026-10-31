@@ -7,7 +7,7 @@
   // If the page is served from a different host than the API, set window.SIDELINE_API.
   const API = (window.SIDELINE_API ?? new URL('.', location.href).pathname).replace(/\/$/, '');
   const EMOJIS = ['🔥', '😂', '😭', '🤯', '💀', '👏'];
-  const FILTERS = [['all', 'All'], ['scoring', 'Scoring'], ['ppr5', '5+ PPR'], ['ppr10', '10+ PPR'], ['big', 'Big plays'], ['mine', 'My lineup']];
+  const FILTERS = [['all', 'All'], ['team', 'My teams'], ['scoring', 'Scoring'], ['ppr5', '5+ PPR'], ['ppr10', '10+ PPR'], ['big', 'Big plays'], ['mine', 'My lineup']];
 
   const S = {
     token: (() => { try { return localStorage.getItem('sl_token'); } catch { return null; } })(),
@@ -558,7 +558,9 @@
     let html = '';
     if (S.pending.length) html += `<button class="new-plays" data-act="show-new">${S.pending.length} new play${S.pending.length > 1 ? 's' : ''}</button>`;
     if (!S.feed.plays.length) {
-      const msg = S.feed.filter === 'mine'
+      const msg = S.feed.filter === 'team'
+        ? (S.myFantasyIds.size ? '<b>No plays from your teams yet</b>Your players show up here the second they touch the ball.' : '<b>No synced teams yet</b><a href="#/leagues">See My teams</a> to bring in the leagues you synced on sidelineff.com.')
+        : S.feed.filter === 'mine'
         ? (S.me ? '<b>No plays from your lineup yet</b>Your players show up here as soon as they touch the ball. <a href="#/lineups">Build a lineup</a>' : '<b>Join to follow your lineup</b><a href="#" data-act="join">Pick a username</a>, then build a lineup.')
         : (() => {
           const next = S.games.filter((g) => g.state === 'pre').sort((a, b) => a.start - b.start)[0];
@@ -855,6 +857,141 @@
     $('#tmPos').addEventListener('click', (e) => { const b = e.target.closest('[data-p]'); if (!b) return; S.tm.pos = b.dataset.p; swap(drawTeam); });
   }
 
+  // ---------- My teams: the leagues synced on sidelineff.com ----------
+  // Live runs at sidelineff.com/live, so it reads the visitor's own synced leagues straight from
+  // the main site (same login, same ESPN/Sleeper sync): /api/workspace lists the leagues and
+  // /api/league-scoreboard has each league's matchups with live player points.
+  const LG_SORTS = [['close', 'Closest matchup'], ['winning', 'Winning first'], ['losing', 'Losing first'], ['live', 'Most players playing now'], ['name', 'League name']];
+  S.lg = { leagues: [], snaps: {}, errors: {}, status: 'idle', at: 0, sort: ls.get('sl-lg-sort') || 'close', loading: null, plRows: null };
+  const onMainSite = () => (window.SIDELINE_API || '').length > 0 || location.pathname.startsWith('/live');
+  const lgWeek = () => S.sel || S.week?.week || 1;
+  async function mainGet(path) {
+    const r = await fetch(path, { cache: 'no-store', credentials: 'same-origin' });
+    const body = await r.json().catch(() => ({}));
+    return { ok: r.ok, status: r.status, body };
+  }
+  function lgMine(snap) {
+    for (const m of snap?.matchups || []) for (const t of [m.home, m.away]) if (t?.isYou) return { me: t, opp: t === m.home ? m.away : m.home, m };
+    return null;
+  }
+  const lgLineup = (team, week) => (team?.lineups || []).find((l) => l.week === week) || (team?.lineups || [])[0] || { starters: [], bench: [] };
+  // match a league player to the player ids plays use (ESPN ids; name + team when a league has none)
+  function lgPid(p) {
+    if (!p) return null;
+    if (p.espnId) return String(p.espnId);
+    const k = `${String(p.name || '').toLowerCase()}|${p.team}`;
+    const row = (S.lg.plRows || []).find((x) => `${String(x.name).toLowerCase()}|${x.team}` === k);
+    return row ? String(row.id) : null;
+  }
+  function lgCollectIds() {
+    const ids = new Set();
+    for (const id of Object.keys(S.lg.snaps)) {
+      const mine = lgMine(S.lg.snaps[id]);
+      if (!mine) continue;
+      const lu = lgLineup(mine.me, lgWeek());
+      for (const sl of [...(lu.starters || []), ...(lu.bench || [])]) { const pid = lgPid(sl.player); if (pid) ids.add(pid); }
+    }
+    S.myFantasyIds = ids;
+  }
+  async function loadLeagues(force = false) {
+    if (S.lg.loading) return S.lg.loading;
+    S.lg.loading = (async () => {
+      if (!onMainSite()) { S.lg.status = 'offsite'; return; }
+      const w = await mainGet('/api/workspace').catch(() => ({ ok: false, status: 0, body: {} }));
+      if (w.status === 401 || w.status === 403) { S.lg.status = 'signedout'; S.lg.leagues = []; S.lg.snaps = {}; lgCollectIds(); return; }
+      if (!w.ok) { S.lg.status = w.status === 404 ? 'offsite' : 'error'; return; }
+      const pf = w.body.workspace?.portfolio || {};
+      S.lg.leagues = (pf.leagues || []).filter((l) => ['ESPN', 'Sleeper'].includes(l.platform));
+      S.lg.defaultId = pf.defaultLeagueId;
+      if (!S.lg.plRows) { try { S.lg.plRows = (await api('/api/players')).players || []; } catch { S.lg.plRows = []; } }
+      await Promise.all(S.lg.leagues.map(async (l) => {
+        const r = await mainGet(`/api/league-scoreboard?league=${encodeURIComponent(l.id)}&period=${lgWeek()}${force ? '&refresh=1' : ''}`).catch(() => ({ ok: false, body: {} }));
+        if (r.body?.snapshot) S.lg.snaps[l.id] = r.body.snapshot;
+        S.lg.errors[l.id] = r.ok ? (r.body?.error || null) : (r.body?.error || 'Scores could not load.');
+      }));
+      S.lg.status = S.lg.leagues.length ? 'ok' : 'none';
+      S.lg.at = Date.now();
+      lgCollectIds();
+    })().finally(() => { S.lg.loading = null; });
+    return S.lg.loading;
+  }
+  async function showLeagues() {
+    view.innerHTML = `${pageHead(weekLabel(), 'My teams', 'Your synced leagues from sidelineff.com<br>Live matchups, your players highlighted')}<div id="lgBody"><div class="empty">Loading your leagues…</div></div>`;
+    await loadLeagues();
+    drawLeagues();
+  }
+  function lgSorted() {
+    const rows = S.lg.leagues.map((l) => {
+      const snap = S.lg.snaps[l.id], mine = lgMine(snap);
+      const lu = mine ? lgLineup(mine.me, lgWeek()) : null;
+      const diff = mine && mine.opp ? (mine.me.score || 0) - (mine.opp.score || 0) : 0;
+      const live = lu ? (lu.starters || []).filter((x) => x.player?.gameState === 'live').length : 0;
+      return { l, snap, mine, diff, live };
+    });
+    const by = { close: (a, b) => Math.abs(a.diff) - Math.abs(b.diff), winning: (a, b) => b.diff - a.diff, losing: (a, b) => a.diff - b.diff, live: (a, b) => b.live - a.live, name: (a, b) => String(a.l.name).localeCompare(String(b.l.name)) }[S.lg.sort] || (() => 0);
+    return rows.sort((a, b) => (!!b.mine - !!a.mine) || by(a, b));
+  }
+  function drawLeagues() {
+    const el = $('#lgBody'); if (!el) return;
+    const st = S.lg.status;
+    if (st === 'offsite') { el.innerHTML = '<div class="empty"><b>Open Live on sidelineff.com</b>Your synced teams come from your sidelineff.com account. <a href="https://sidelineff.com/live/#/leagues">Go to sidelineff.com/live</a></div>'; return; }
+    if (st === 'signedout') { el.innerHTML = `<div class="empty"><b>Sign in to see your teams</b>Your synced ESPN and Sleeper leagues show up here once you're signed in on sidelineff.com.<br><a class="btn" style="margin-top:14px" href="/login?next=${encodeURIComponent(location.href)}">Sign in</a></div>`; return; }
+    if (st === 'error') { el.innerHTML = '<div class="empty"><b>Couldn\'t load your leagues</b>Try again in a moment. <button class="btn ghost" data-act="lg-refresh">Try again</button></div>'; return; }
+    if (st === 'none') { el.innerHTML = '<div class="empty"><b>No synced leagues yet</b>Connect your ESPN or Sleeper leagues on sidelineff.com and they show up here, live. <a href="/">Go to sidelineff.com</a></div>'; return; }
+    const rows = lgSorted();
+    const status = (p) => !p ? '' : p.gameState === 'live' ? `<span class="live">Live</span>${p.matchup ? ` · ${esc(p.matchup)}` : ''}` : p.gameState === 'final' ? `Final${p.matchup ? ` · ${esc(p.matchup)}` : ''}` : p.kickoffAt ? kick(Date.parse(p.kickoffAt)) : (p.matchup ? esc(p.matchup) : '');
+    const photo = (p) => { const pid = lgPid(p); const row = pid && (S.lg.plRows || []).find((x) => String(x.id) === pid); return face({ name: p?.name, headshot: row?.headshot, pos: p?.position }, 'face sm'); };
+    const cell = (sl) => {
+      const p = sl?.player;
+      if (!p) return '<div class="tm-p empty">Empty</div>';
+      const pid = lgPid(p);
+      const pts = p.score == null ? (p.gameState === 'scheduled' ? '–' : '0.0') : fmt(p.score);
+      return `<div class="tm-p ${p.gameState === 'live' ? 'is-live' : ''}">${photo(p)}<div><div class="nm">${pid ? `<button class="plink" data-act="player" data-pid="${esc(pid)}">${esc(p.name)}</button>` : esc(p.name)}${p.injury ? ` <span class="inj">${esc(p.injury)}</span>` : ''}</div><div class="sub">${esc(p.position)}${p.team ? ` · ${esc(p.team)}` : ''}${status(p) ? ` · ${status(p)}` : ''}${p.proj != null && p.gameState !== 'final' ? ` · proj ${fmt(p.proj)}` : ''}</div></div><b>${pts}</b></div>`;
+    };
+    const section = ({ l, snap, mine }) => {
+      const err = S.lg.errors[l.id];
+      if (!snap || !mine) return `<section class="lg-card"><div class="lg-top"><div><span class="label">${esc(l.platform)}</span><h2>${esc(l.name || snap?.leagueName || 'League')}</h2></div></div><p class="rules">${esc(err || (snap ? 'No matchup for you this week.' : 'Scores could not load.'))}</p></section>`;
+      const week = lgWeek();
+      const A = lgLineup(mine.me, week), B = mine.opp ? lgLineup(mine.opp, week) : null;
+      const n = Math.max((A.starters || []).length, (B?.starters || []).length);
+      const lines = Array.from({ length: n }, (_, i) => { const a = A.starters?.[i], b = B?.starters?.[i]; return `<div class="tm-row"><span class="tm-slot">${esc((a || b)?.slot || '')}</span>${cell(a)}${B ? cell(b) : ''}</div>`; }).join('');
+      const left = (A.starters || []).filter((x) => x.player && x.player.gameState === 'scheduled').length;
+      const playing = (A.starters || []).filter((x) => x.player?.gameState === 'live').length;
+      const oppLeft = (B?.starters || []).filter((x) => x.player && x.player.gameState === 'scheduled').length;
+      const share = mine.opp && (mine.me.score || 0) + (mine.opp.score || 0) > 0 ? (mine.me.score || 0) / ((mine.me.score || 0) + (mine.opp.score || 0)) * 100 : 50;
+      const bench = (A.bench || []).filter((x) => x.player);
+      return `<section class="lg-card" id="lg-${esc(l.id)}">
+        <div class="lg-top"><div><span class="label">${esc(l.platform)}${mine.me.record ? ` · ${esc(mine.me.record)}` : ''}${l.id === S.lg.defaultId ? ' · default' : ''}</span><h2>${esc(l.name || snap.leagueName)}</h2></div>${err ? `<span class="lg-warn">${esc(err)}</span>` : ''}</div>
+        <div class="tm-head">
+          <div class="tm-side me"><small>${esc(mine.me.name)}</small><b>${mine.me.score == null ? '–' : fmt(mine.me.score)}</b><span>${playing ? `${playing} playing · ` : ''}${left} yet to play</span></div>
+          <div class="tm-vs">vs</div>
+          <div class="tm-side"><small>${mine.opp ? esc(mine.opp.name) : 'Bye week'}</small><b>${mine.opp && mine.opp.score != null ? fmt(mine.opp.score) : '–'}</b><span>${mine.opp ? `${oppLeft} yet to play` : ''}</span></div>
+          <div class="tm-bar"><i style="width:${share}%"></i></div></div>
+        <div class="tm-grid ${B ? 'two' : ''}">${lines}</div>
+        ${bench.length ? `<details class="tm-bench"><summary class="label">Bench · ${fmt(bench.reduce((a, x) => a + (x.player.score || 0), 0))} pts</summary>${bench.map((x) => `<div class="tm-row"><span class="tm-slot">${esc(x.slot || 'BN')}</span>${cell(x)}</div>`).join('')}</details>` : ''}
+      </section>`;
+    };
+    const ago = S.lg.at ? Math.round((Date.now() - S.lg.at) / 1000) : null;
+    el.innerHTML = `<div class="lg-tools">
+        <label class="lg-sort"><span class="label">Sort</span><select id="lgSort">${LG_SORTS.map(([k, t]) => `<option value="${k}" ${S.lg.sort === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
+        <a class="pill" href="#/feed" data-act="team-feed">Plays from my teams</a>
+        <button class="pill ${S.alerts ? 'on' : ''}" data-act="alerts">${S.alerts ? 'Score alerts on' : 'Alert me when my players score'}</button>
+        <button class="pill" data-act="lg-refresh">Refresh</button>
+        <span class="lg-ago">${ago != null ? `Updated ${ago < 60 ? `${ago}s` : `${Math.round(ago / 60)}m`} ago` : ''}</span>
+      </div>
+      <nav class="lg-jump">${rows.map(({ l, mine }) => `<a href="#/leagues" data-act="lg-jump" data-id="${esc(l.id)}">${esc(l.name)}${mine && mine.opp ? ` <b class="${(mine.me.score || 0) >= (mine.opp.score || 0) ? 'up' : 'down'}">${fmt(mine.me.score || 0)}–${fmt(mine.opp.score || 0)}</b>` : ''}</a>`).join('')}</nav>
+      ${rows.map(section).join('')}
+      <p class="rules">Points come from each league's own scoring through your sidelineff.com sync. They refresh about every minute during games, and right after one of your players makes a play.</p>`;
+    $('#lgSort').onchange = (e) => { S.lg.sort = e.target.value; ls.set('sl-lg-sort', S.lg.sort); drawLeagues(); };
+  }
+  // keep teams fresh: every minute while games are live, and soon after one of your players makes a play
+  let lgTimer = null;
+  function lgSoon(ms = 15000) {
+    clearTimeout(lgTimer);
+    lgTimer = setTimeout(async () => { await loadLeagues(); if (currentRoute() === 'leagues') drawLeagues(); if ($('#feedList')) renderFeedList(); }, ms);
+  }
+  setInterval(() => { if (S.lg.status === 'ok' && S.games.some((g) => g.state === 'in')) lgSoon(0); }, 60000);
+
   // ---------- one player's day ----------
   async function openPlayer(pid) {
     openSheet('Player', '<div class="empty">Loading…</div>');
@@ -1032,6 +1169,9 @@
           renderLive();
           break;
         }
+        case 'lg-refresh': { const b = t; b.disabled = true; await loadLeagues(true); b.disabled = false; drawLeagues(); break; }
+        case 'lg-jump': e.preventDefault(); document.getElementById(`lg-${t.dataset.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); break;
+        case 'team-feed': S.feed.filter = 'team'; break;
         case 'alerts': {
           if (!S.alerts && 'Notification' in window && Notification.permission === 'default') { try { await Notification.requestPermission(); } catch { /* ignore */ } }
           S.alerts = !S.alerts; ls.set('sl-alerts', S.alerts ? '1' : null);
@@ -1196,6 +1336,7 @@
       notePlays([p]);
       renderLive();
       alertFor(p);
+      if (S.lg.status === 'ok' && isMine(p)) lgSoon(15000);
       if (currentRoute() === 'players' && Date.now() - S.pl.at > 8000) loadPlayers();
       if (currentRoute() === 'team' && S.tm.data?.game?.id === p.gameId && Date.now() - (S.tm.at || 0) > 5000) { S.tm.at = Date.now(); loadTeam(); }
       if (!$('#feedList') || !matchesFeed(p)) return;
@@ -1261,6 +1402,7 @@
     else if (r === 'ranks') showRanks();
     else if (r === 'players') showPlayers();
     else if (r === 'team') showTeam(currentTeam());
+    else if (r === 'leagues') showLeagues();
     else { gameTab = 'plays'; showFeed(); }
     window.scrollTo({ top: 0 });
   }
@@ -1272,5 +1414,6 @@
     route();
     renderSide();
     connect();
+    loadLeagues().then(() => { if (S.myFantasyIds.size && $('#feedList')) renderFeedList(); }).catch(() => {});
   })();
 })();
