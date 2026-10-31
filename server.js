@@ -237,17 +237,20 @@ app.get('/api/teams/:abbr', (req, res) => {
       headshot: nv?.headshot || t.headshot || prev.headshot || '', ppr: t.ppr, line: t.line, s: t.s || {}, played: true });
   }
   // Live usage this game: each player's share of the team's targets and carries.
-  const tot = { tgt: 0, car: 0 };
-  for (const p of out.values()) if (p.played) { tot.tgt += p.s.tgt || 0; tot.car += p.s.car || 0; }
+  // College box scores don't list targets: use catches there instead.
+  const tot = { tgt: 0, car: 0, rec: 0 };
+  for (const p of out.values()) if (p.played) { tot.tgt += p.s.tgt || 0; tot.car += p.s.car || 0; tot.rec += p.s.rec || 0; }
+  const byCatches = !tot.tgt && tot.rec > 0;
+  if (byCatches) tot.tgt = tot.rec;
   for (const p of out.values()) {
-    p.tgt = p.s?.tgt || 0; p.car = p.s?.car || 0;
+    p.tgt = (byCatches ? p.s?.rec : p.s?.tgt) || 0; p.car = p.s?.car || 0;
     p.tgtShare = tot.tgt ? Math.round(p.tgt / tot.tgt * 100) : null;
     p.carShare = tot.car ? Math.round(p.car / tot.car * 100) : null;
   }
   const players = [...out.values()].filter((p) => p.played || p.seasonPpr > 0)
     .sort((a, b) => (b.seasonPpr + b.ppr) - (a.seasonPpr + a.ppr));
   const others = engine.listGames(week).flatMap((x) => [x.home, x.away]).map((t) => t.abbr).filter((x) => x !== abbr).sort();
-  res.json({ week, abbr, team, game: g, college: !!g?.extra, players, others, teamTgt: tot.tgt, teamCar: tot.car });
+  res.json({ week, abbr, team, game: g, college: !!g?.extra, players, others, teamTgt: tot.tgt, teamCar: tot.car, byCatches });
 });
 
 // ---------- feed ----------
