@@ -40,14 +40,14 @@ function use(data) {
 
 async function download() {
   const base = cfg.SIDELINE_URL;
-  const res = await fetch(base + '/', { headers: { 'user-agent': 'Mozilla/5.0 (compatible; sideline-live)', accept: 'text/html' }, signal: AbortSignal.timeout(15000) });
+  const res = await fetch(base + '/', { headers: { 'user-agent': 'Mozilla/5.0 (compatible; sideline-live)', accept: 'text/html' }, signal: AbortSignal.timeout(60000) });
   const home = await res.text();
   const idx = (home.match(/src="([^"]*\/index-[^"]+\.js)"/) || [])[1];
   if (!idx) throw new Error(`main page script not found (status ${res.status}, ${home.length} bytes: ${home.slice(0, 80).replace(/\s+/g, ' ')})`);
-  const index = await fetch(new URL(idx, base).href, { signal: AbortSignal.timeout(15000) }).then((r) => r.text());
+  const index = await fetch(new URL(idx, base).href, { signal: AbortSignal.timeout(60000) }).then((r) => r.text());
   const chunk = (index.match(/_next\/static\/chunks\/boone-values-[A-Za-z0-9_-]+\.js/) || [])[0];
   if (!chunk) throw new Error('trade values file not found');
-  const js = await fetch(`${base}/${chunk}`, { signal: AbortSignal.timeout(15000) }).then((r) => r.text());
+  const js = await fetch(`${base}/${chunk}`, { signal: AbortSignal.timeout(60000) }).then((r) => r.text());
   const data = parse(js);
   if (data.players.length < 50) throw new Error(`only ${data.players.length} players found`);
   return data;
@@ -73,9 +73,18 @@ function start() {
     try { if (fs.existsSync(FILE())) use(JSON.parse(fs.readFileSync(FILE(), 'utf8'))); } catch { /* ignore */ }
     return;
   }
-  const run = () => { state.loading = load().finally(() => { state.loading = null; }); };
-  run();
-  setInterval(run, 12 * 3600e3).unref();
+  // Try shortly after start (the server is busy loading the season right at boot), retry every
+  // 3 minutes until it works, then refresh twice a day.
+  let timer = null;
+  const run = async () => {
+    clearTimeout(timer);
+    state.loading = load();
+    await state.loading;
+    state.loading = null;
+    timer = setTimeout(run, state.error && !state.asOf ? 3 * 60e3 : 12 * 3600e3);
+    timer.unref?.();
+  };
+  setTimeout(run, 20e3).unref?.();
 }
 
 const valueOf = (name, pos) => state.players.get(`${key(name)}|${pos}`)?.value ?? null;
