@@ -911,7 +911,7 @@
   const kick = (ms) => ms ? new Date(ms).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }) : '';
   async function showPlayers() {
     view.innerHTML = `${pageHead(weekLabel(), 'Players', `Every player's fantasy points<br>Updates live with each play<div class="fmt-row">${fmtSeg()}</div>`)}
-      <div class="pills seg" id="plPos">${['ALL', 'QB', 'RB', 'WR', 'TE'].map((x) => `<button class="pill ${S.pl.pos === x ? 'on' : ''}" data-p="${x}">${x === 'ALL' ? 'All' : x}</button>`).join('')}</div>
+      <div class="pills seg" id="plPos">${['ALL', 'QB', 'RB', 'WR', 'TE', 'K'].map((x) => `<button class="pill ${S.pl.pos === x ? 'on' : ''}" data-p="${x}">${x === 'ALL' ? 'All' : x}</button>`).join('')}</div>
       <div class="pool-tools"><input id="plQ" type="search" placeholder="Search player or team" value="${esc(S.pl.q)}"></div>
       <div id="plList">${skel(8, 'rows')}</div>`;
     $('#plPos').addEventListener('click', (e) => {
@@ -1235,8 +1235,8 @@
     let html = '';
     if (leaders) {
       const top = leaders.players[0]?.ppr || 1;
-      html += `<section><span class="label">${esc(weekLabel())} · PPR leaders</span>${leaders.players.slice(0, 8).map((p, i) => `<div class="mini lead ${S.myLineupIds.has(String(p.id)) ? 'mine' : ''} ${i === 0 ? 'first' : ''}">${face(p, 'face sm')}<span class="who">${esc(p.name)}<small>${esc(p.pos)} · ${esc(p.team)}</small><i class="lead-bar"><i style="width:${Math.max(4, Math.round(p.ppr / top * 100))}%"></i></i></span><span class="v amber">${fmt(p.ppr)}</span></div>`).join('')
-        || '<p>Leaders show up once games kick off.</p>'}<a class="foot" href="#/feed">All plays →</a></section>`;
+      html += `<section><span class="label">${esc(weekLabel())}${isCurrentWeek() ? ' so far' : ''} · Top scorers</span>${leaders.players.slice(0, 10).map((p, i) => `<div class="mini lead ${S.myLineupIds.has(String(p.id)) ? 'mine' : ''} ${i === 0 ? 'first' : ''}">${face(p, 'face sm')}<span class="who">${esc(p.name)}<small>${esc(p.pos)} · ${esc(p.team)}</small><i class="lead-bar"><i style="width:${Math.max(4, Math.round(p.ppr / top * 100))}%"></i></i></span><span class="v amber">${fmt(p.ppr)}</span></div>`).join('')
+        || '<p>Top scorers show up once games kick off.</p>'}<a class="foot" href="#/players">All players →</a></section>`;
     }
     // Lineups started this season with the current week: past weeks have none to show
     if (S.me) {
@@ -1250,10 +1250,9 @@
     } else {
       html += '<section><span class="label">Play along</span><h2>Join free</h2><p>Pick a username to react to plays, make free picks and build a weekly lineup.</p><button class="btn" data-act="join">Join free</button></section>';
     }
-    if (board) {
+    if (board && isCurrentWeek()) {
       html += `<section><span class="label">Top pickers</span>${board.rows.slice(0, 5).map((u) => `<div class="mini"><em>${u.rank}</em><span class="who">${esc(u.name)}<small>${esc(u.tier)}</small></span><span class="v amber">${u.credits.toLocaleString()}</span></div>`).join('') || '<p>No one yet.</p>'}<a class="foot" href="#/ranks">All ranks →</a></section>`;
     }
-    html += '<section><span class="label">How plays are scored</span><p style="margin:0">Standard PPR: 1 per catch, 0.1 per rushing or receiving yard, 0.04 per passing yard, 6 per rushing or receiving TD, 4 per passing TD, −2 per interception or lost fumble. EPA is a live estimate; win probability comes from ESPN.</p></section>';
     side.innerHTML = html;
   }
 
