@@ -135,7 +135,30 @@
   S.alerts = ls.get('sl-alerts') === '1';
   ls.set('sl-sleeper', null); ls.set('sl-sleeper-ids', null);
 
+  // Past weeks don't change: answers for them are kept in memory (and fetched ahead of time), so going back is instant.
+  const pastCache = new Map();
+  const pastWeekOf = (path) => { const m = /[?&]week=(\d+)/.exec(path); const w = m ? Number(m[1]) : 0; return w && S.week?.week && w < S.week.week ? w : 0; };
   async function api(path, opts = {}) {
+    const cacheable = !opts.method && !opts.fresh && pastWeekOf(path) && !/[?&](before|players)=/.test(path);
+    if (cacheable && pastCache.has(path)) return pastCache.get(path);
+    const p = apiFetch(path, opts);
+    if (cacheable) { pastCache.set(path, p); p.catch(() => pastCache.delete(path)); }
+    return p;
+  }
+  // Load recent past weeks in the background, newest first, while the page is idle
+  function preloadPastWeeks() {
+    const cur = S.week?.week; if (!cur || cur < 2) return;
+    const weeks = Array.from({ length: Math.min(cur - 1, 18) }, (_, i) => cur - 1 - i);
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 400));
+    const next = () => {
+      const w = weeks.shift(); if (!w) return;
+      const feedQs = new URLSearchParams({ filter: 'all', limit: 30 }); feedQs.set('week', w);
+      Promise.all([api(`/api/games?week=${w}`), api(`/api/leaders?week=${w}`), api(`/api/feed?${feedQs}`)])
+        .catch(() => {}).finally(() => idle(next, { timeout: 3000 }));
+    };
+    idle(next, { timeout: 3000 });
+  }
+  async function apiFetch(path, opts = {}) {
     const res = await fetch(API + path, {
       method: opts.method || 'GET',
       headers: { 'Content-Type': 'application/json', ...(S.token ? { Authorization: `Bearer ${S.token}` } : {}) },
@@ -213,8 +236,9 @@
     const team = p?.team || (String(p?.id || '').startsWith('DST-') ? String(p.id).slice(4) : '');
     if (TEAM_FACE.has(pos) && team) return `<span class="${cls} face-team">${tlogo(team)}</span>`;
     const src = p?.headshot || (/^\d+$/.test(String(p?.id || '')) && !p?.college ? `https://a.espncdn.com/i/headshots/nfl/players/full/${p.id}.png` : '');
-    if (src) return `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;initials&quot;>${initials(p.name)}</div>'">`;
-    return `<div class="initials">${initials(p?.name)}</div>`;
+    const ini = `initials ${cls.split(' ').filter((c) => c !== 'face').join(' ')}`.trim();
+    if (src) return `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;${ini}&quot;>${initials(p.name)}</div>'">`;
+    return `<div class="${ini}">${initials(p?.name)}</div>`;
   }
 
   // A team's code as a link to its page
@@ -804,10 +828,10 @@
     const live = S.savedLineup ? new Map(S.savedLineup.players.map((p) => [String(p.id), p])) : new Map();
     const slots = S.slate.slots.map((slot) => {
       const p = S.slateById.get(S.draft[slot]);
-      if (!p) return `<div class="slot empty-slot"><span class="sl">${SLOT_LABEL[slot]}</span><span class="nm">${slot === 'FLEX' ? 'RB, WR or TE' : `Add a ${SLOT_LABEL[slot]}`}</span><span></span></div>`;
+      if (!p) return `<div class="slot empty-slot"><span class="sl">${SLOT_LABEL[slot]}</span><span class="face xs ph" aria-hidden="true"></span><span class="nm">${slot === 'FLEX' ? 'RB, WR or TE' : `Add a ${SLOT_LABEL[slot]}`}</span><span></span></div>`;
       const lv = live.get(p.id);
       const right = lv && lv.gameState !== 'pre' ? `<span class="pp">${fmt(lv.points)}</span>` : `<span class="sal">${money(p.salary)}</span>`;
-      return `<button class="slot" data-act="remove" data-slot="${slot}" ${p.locked ? 'disabled title="Game started: locked"' : 'title="Remove"'}><span class="sl">${SLOT_LABEL[slot]}</span><span class="nm">${esc(p.name)}${p.locked ? ' 🔒' : ''}<small>${esc(p.team)} ${p.home ? 'vs' : '@'} ${esc(p.opp)}${lv?.line ? ` · ${esc(lv.line)}` : ''}</small></span>${right}</button>`;
+      return `<button class="slot" data-act="remove" data-slot="${slot}" ${p.locked ? 'disabled title="Game started: locked"' : 'title="Remove"'}><span class="sl">${SLOT_LABEL[slot]}</span>${face(p, 'face xs')}<span class="nm">${esc(p.name)}${p.inj ? ` <span class="inj">${esc(p.inj)}</span>` : ''}${p.locked ? ' 🔒' : ''}<small>${esc(p.team)} ${p.home ? 'vs' : '@'} ${esc(p.opp)}${lv?.line ? ` · ${esc(lv.line)}` : ''}</small></span>${right}</button>`;
     }).join('');
     const pool = S.slate.players
       .filter((p) => (S.pos === 'ALL' || p.pos === S.pos) && (!S.q || p.name.toLowerCase().includes(S.q) || p.team.toLowerCase() === S.q))
@@ -823,8 +847,8 @@
     const rows = pool.slice(0, 150).map((p) => {
       const isIn = inLineup.has(p.id);
       const canAdd = !p.locked && !isIn && S.slate.slots.some((s) => !S.draft[s] && S.slate.slotPos[s].includes(p.pos));
-      return `<div class="prow">${p.headshot ? `<img src="${esc(p.headshot)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;ph&quot;></div>'">` : '<div class="ph"></div>'}
-        <div class="nm">${esc(p.name)} <small>${esc(p.pos)} · ${esc(p.team)} ${p.home ? 'vs' : '@'} ${esc(p.opp)} · ${fmt(p.ppg)} PPR/g${p.tgtShare && p.pos !== 'QB' ? ` · ${fmt(p.tgtShare, 0)}% tgt` : ''}${p.locked ? ' · 🔒 started' : ''}</small></div>
+      return `<div class="prow">${face(p, 'face prow-face')}
+        <div class="nm">${esc(p.name)}${p.inj ? ` <span class="inj">${esc(p.inj)}</span>` : ''} <small>${esc(p.pos)} · ${esc(p.team)} ${p.home ? 'vs' : '@'} ${esc(p.opp)} · ${fmt(p.ppg)} PPR/g${p.tgtShare && p.pos !== 'QB' ? ` · ${fmt(p.tgtShare, 0)}% tgt` : ''}${p.locked ? ' · 🔒 started' : ''}</small></div>
         <div class="sal">${money(p.salary)}<small>${p.weekRank ? `${esc(p.pos)}${p.weekRank} this week · proj ${fmt(p.proj)}` : p.proj === null && S.slate.pricing === 'weekly' ? 'not ranked this week' : p.value != null ? `trade value ${fmt(p.value, p.value < 10 ? 1 : 0)}` : `${fmt(p.ppg / (p.salary / 1000), 2)} pts/$1k`}</small></div>
         <button class="add-btn ${isIn ? 'in' : ''}" data-act="${isIn ? 'unpick' : 'add'}" data-pid="${esc(p.id)}" ${isIn || canAdd ? '' : 'disabled'} aria-label="${isIn ? 'Remove' : 'Add'} ${esc(p.name)}">${isIn ? '✓' : '+'}</button></div>`;
     }).join('');
@@ -1591,6 +1615,7 @@
     route();
     renderSide();
     connect();
+    setTimeout(preloadPastWeeks, 2500);
     loadLeagues().then(() => { if (S.myFantasyIds.size && $('#feedList')) renderFeedList(); }).catch(() => {});
   })();
 })();

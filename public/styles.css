@@ -76,7 +76,7 @@ code { font-size: 0.9em; color: var(--gold); }
 .chip-game .meta .live { color: var(--live); }
 .poss::after { content: ''; display: inline-block; width: 5px; height: 5px; margin-left: 6px; border-radius: 50%; background: var(--gold); vertical-align: middle; }
 .tlogo { width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; font: 600 8px/1 var(--label-font); color: #fff; flex: 0 0 auto; overflow: hidden; }
-.tlogo img { width: 100%; height: 100%; object-fit: contain; }
+.tlogo img { width: 80%; height: 80%; object-fit: contain; display: block; } /* inset so every logo sits inside its circle */
 
 /* ---------- layout ---------- */
 .shell { max-width: 1180px; margin: 0 auto; padding: 0 24px 80px; display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 40px; }
@@ -239,7 +239,7 @@ html[data-look="modern"] .breakdown li.eq::before { content: none; }
 .cap-bar i { display: block; height: 100%; background: var(--gold); }
 .cap-bar i.over { background: var(--neg); }
 .slots { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--card); }
-.slot { display: grid; grid-template-columns: 44px 1fr auto; align-items: center; gap: 10px; padding: 10px 14px; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; }
+.slot { display: grid; grid-template-columns: 40px 34px 1fr auto; align-items: center; gap: 10px; padding: 10px 14px; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; }
 .slot:last-child { border-bottom: 0; }
 .slot .sl { font: 700 13px/1 var(--num); color: var(--muted); }
 .slot .nm { font-weight: 600; font-size: 15px; }
@@ -1075,5 +1075,13 @@ html[data-look="modern"] .nav > .glide { width: 26px; height: 13px; bottom: -7px
 
 /* Kickers and defenses: the team logo in place of a photo */
 .face-team { display: grid; place-items: center; overflow: hidden; background: var(--card-2); }
-.face-team .tlogo { width: 78%; height: 78%; background: transparent !important; font-size: 11px; }
+.face-team .tlogo { width: 100%; height: 100%; background: transparent !important; font-size: 11px; }
+.face-team .tlogo img { width: 72%; height: 72%; }
 .face-team .tlogo img { object-fit: contain; }
+
+/* Faces in the lineup builder */
+.face.xs, .initials.xs { width: 34px; height: 34px; }
+.slot .face.ph { border: 1px dashed var(--line-2); background: none; border-radius: 50%; }
+.prow .prow-face, .prow .initials { width: 40px; height: 40px; font-size: 15px; }
+.prow .face-team img, .slot .face-team img { width: 80%; height: 80%; border-radius: 0; background: none; object-fit: contain; }
+.slot .initials { font-size: 13px; }

@@ -406,6 +406,9 @@ app.post('/api/plays/:id/comments', needUser, (req, res) => {
 // ---------- weekly salary-cap lineups ----------
 const SLOT_POS = { QB: ['QB'], RB1: ['RB'], RB2: ['RB'], WR1: ['WR'], WR2: ['WR'], WR3: ['WR'], TE: ['TE'], FLEX: ['RB', 'WR', 'TE'] };
 
+// Injury tags from this week's projections: "Out", "IR" and suspensions leave the pool; the rest show as a tag.
+const OUT = /^(out|o|ir|injured reserve|pup|susp|suspended|nfi)\b/i;
+const injTag = (s) => { const t = String(s).trim(); return /^q/i.test(t) ? 'Q' : /^d/i.test(t) ? 'D' : /^p/i.test(t) ? 'P' : t.slice(0, 12); };
 function slatePlayers() {
   const games = engine.listGames();
   const byTeam = new Map();
@@ -415,10 +418,20 @@ function slatePlayers() {
   }
   const maxWeek = Math.max(0, ...nflverse.all().map((p) => p.weeks[p.weeks.length - 1]?.week || 0));
   return nflverse.all()
-    .filter((p) => byTeam.has(p.team) && (p.weeks[p.weeks.length - 1]?.week || 0) >= maxWeek - 2 && p.ppg >= 1)
+    // On this week's slate and either playing lately or ranked this week (a starter back from injury, like a QB
+    // who missed a few games, is ranked even though his last game was weeks ago). Anyone ruled out is left off.
+    .filter((p) => {
+      if (!byTeam.has(p.team)) return false;
+      const r = weeklyRanks.rankOf(p.name, p.pos);
+      if (r && OUT.test(r.injury || '')) return false;
+      if (weeklyRanks.state.rows.size) return !!r;
+      return (p.weeks[p.weeks.length - 1]?.week || 0) >= maxWeek - 2 && p.ppg >= 1;
+    })
     .map((p) => {
       const t = byTeam.get(p.team);
+      const r = weeklyRanks.rankOf(p.name, p.pos);
       return {
+        inj: r?.injury ? injTag(r.injury) : null,
         id: p.id, name: p.name, pos: p.pos, team: p.team, opp: t.opp, home: t.home, headshot: p.headshot,
         salary: p.salary, ppg: p.ppg, last3Ppg: p.last3Ppg, tgtShare: p.tgtShare, adot: p.adot,
         gameId: t.g.id, kickoff: t.g.start, locked: t.g.state !== 'pre' || Date.now() >= t.g.start,
