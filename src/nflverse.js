@@ -21,6 +21,7 @@ const state = {
   kickers: new Map(),
   byEspn: new Map(), // espnId -> player profile with season stats + salary
   kickerSeason: new Map(), // espnId -> kicker profile with season fantasy points (kept apart from the lineup pool)
+  people: [],              // every current player: [name, team, espnId, headshot] (faces for My teams)
   loadedAt: 0,
 };
 
@@ -75,6 +76,7 @@ async function load() {
 
   const gsisToEspn = new Map();
   const pfrToGsis = new Map();
+  const people = [];
   const bio = new Map();
   const kickers = new Map();
   for (const p of parseCSV(pText)) {
@@ -86,6 +88,7 @@ async function load() {
       }
     }
     if (p.pfr_id && p.gsis_id) pfrToGsis.set(p.pfr_id, p.gsis_id);
+    if (p.espn_id && Number(p.last_season) >= SEASON - 1 && p.status !== 'RET') people.push([p.display_name, fixTeam(p.latest_team), p.espn_id, p.headshot || '']);
     if (p.espn_id && p.gsis_id) {
       gsisToEspn.set(p.gsis_id, p.espn_id);
       bio.set(p.gsis_id, p);
@@ -183,6 +186,7 @@ async function load() {
     k.ppg = +(k.weeks.reduce((a, w) => a + w.ppr, 0) / (k.games || 1)).toFixed(1);
   }
   state.kickerSeason = kAgg;
+  state.people = people;
   state.byEspn = byEspn;
   state.kickers = kickers;
   state.ready = true;
@@ -201,5 +205,6 @@ module.exports = {
   byTeam: (team) => [...state.byEspn.values()].filter((p) => p.team === team),
   kickersByTeam: (team) => [...state.kickerSeason.values()].filter((p) => p.team === team),
   kicker: (espnId) => state.kickerSeason.get(String(espnId)),
+  people: () => state.people,
   all: () => [...state.byEspn.values()],
 };

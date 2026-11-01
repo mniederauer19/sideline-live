@@ -237,6 +237,9 @@ const posOf = (nv, t) => {
 };
 const hasFantasy = (t) => (t.ppr !== 0 || !!t.line) && !/^\s*team\s*$/i.test(t.name || '');
 
+// Every current NFL player's ESPN id and photo, so any league's roster can show faces (cached by the browser for an hour).
+app.get('/api/people', (_req, res) => { res.set('cache-control', 'public, max-age=3600'); res.json({ people: nflverse.people() }); });
+
 // Snap share (official counts, through the week before the one shown): last game, last 3 and season average.
 function usage(p, week) {
   const sn = (p.snaps || []).filter((x) => x.week < week);

@@ -1072,3 +1072,8 @@ html[data-look="modern"] .nav > .glide { width: 26px; height: 13px; bottom: -7px
   .demo-banner, .sync { max-width: calc(1500px - 48px); }
   .shell { grid-template-columns: 260px minmax(0, 1fr) 300px; gap: 36px; }
 }
+
+/* Kickers and defenses: the team logo in place of a photo */
+.face-team { display: grid; place-items: center; overflow: hidden; background: var(--card-2); }
+.face-team .tlogo { width: 78%; height: 78%; background: transparent !important; font-size: 11px; }
+.face-team .tlogo img { object-fit: contain; }

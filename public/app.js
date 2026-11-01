@@ -171,23 +171,50 @@
     }
     return { abbr, color: '#33415a', logo: '' };
   }
-  // sidelineff.com's neon logos use a few different team codes
-  const NEON_CODE = { WSH: 'WAS' };
+  // Logos follow the visitor's choices on sidelineff.com (same site, same browser storage): a logo picked per team,
+  // or neon signs for every team. Live's own Neon setting works too. College teams keep ESPN's logo.
+  const NFL_TEAMS = new Set('ARI ATL BAL BUF CAR CHI CIN CLE DAL DEN DET GB HOU IND JAX KC LV LAC LAR MIA MIN NE NO NYG NYJ PHI PIT SF SEA TB TEN WSH WAS LA'.split(' '));
+  const SITE_CODE = { WSH: 'WAS', LA: 'LAR' };
+  const SITE = /(^|\.)sidelineff\.com$/.test(location.hostname) ? '' : 'https://sidelineff.com';
+  let sitePrefsCache = null;
+  function sitePrefs() {
+    if (sitePrefsCache) return sitePrefsCache;
+    let prefs = {}, style = 'classic';
+    try { prefs = JSON.parse(localStorage.getItem('sideline-logo-prefs') || '{}') || {}; } catch { /* storage blocked */ }
+    try { style = localStorage.getItem('sideline-logo-style') || 'classic'; } catch { /* storage blocked */ }
+    return (sitePrefsCache = { prefs, style });
+  }
+  window.addEventListener('storage', (e) => { if (!e.key || e.key.startsWith('sideline-logo')) { sitePrefsCache = null; renderStrip(); } });
+  function logoSrc(abbr) {
+    const t = teamInfo(abbr), code = SITE_CODE[abbr] || abbr;
+    if (!NFL_TEAMS.has(abbr) || (t.league && t.league !== 'nfl')) return { src: t.logo || '', alt: '' };
+    const espn = t.logo || `https://a.espncdn.com/i/teamlogos/nfl/500/${(abbr === 'WAS' ? 'wsh' : abbr).toLowerCase()}.png`;
+    const { prefs, style } = sitePrefs(), pick = typeof prefs[code] === 'string' ? prefs[code] : '';
+    const dark = document.documentElement.dataset.theme !== 'light';
+    if (style === 'neon' || document.documentElement.dataset.logos === 'neon') return { src: `${SITE}/team-logos/neon/${dark ? 'tube' : 'glow'}/${pick || code}.png`, alt: espn };
+    if (pick) return { src: `${SITE}/team-logos/options/160/${pick}.png`, alt: espn };
+    return { src: espn, alt: '' };
+  }
   function tlogo(abbr) {
     const t = teamInfo(abbr);
     const bg = t.color || '#33415a';
-    const neon = document.documentElement.dataset.logos === 'neon';
-    const src = neon ? `https://sidelineff.com/team-logos/neon/tube/${NEON_CODE[abbr] || abbr}.png` : t.logo;
+    const { src, alt } = logoSrc(abbr);
     const text = `this.replaceWith(document.createTextNode('${esc(abbr)}'))`;
-    const fallback = neon && t.logo ? `if(this.dataset.f){${text}}else{this.dataset.f=1;this.src='${esc(t.logo)}'}` : text;
+    const fallback = alt ? `if(this.dataset.f){${text}}else{this.dataset.f=1;this.src='${esc(alt)}'}` : text;
     return `<span class="tlogo" style="background:${esc(bg)}" title="${esc(abbr)}">${src
       ? `<img src="${esc(src)}" alt="${esc(abbr)}" loading="lazy" onerror="${fallback}">`
       : esc(abbr)}</span>`;
   }
   function initials(name) { return esc((name || '?').split(' ').map((w) => w[0]).join('').slice(0, 2)); }
+  // Faces: the player's photo (ESPN's, by ESPN id, when we have no other); kickers and defenses show their team's logo.
+  const TEAM_FACE = new Set(['K', 'PK', 'DST', 'D/ST', 'DEF']);
   function face(p, cls = 'face') {
-    if (p?.headshot) return `<img class="${cls}" src="${esc(p.headshot)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;initials&quot;>${initials(p.name)}</div>'">`;
-    return `<div class="initials">${p?.pos === 'DST' ? 'D' : initials(p?.name)}</div>`;
+    const pos = String(p?.pos || '').toUpperCase();
+    const team = p?.team || (String(p?.id || '').startsWith('DST-') ? String(p.id).slice(4) : '');
+    if (TEAM_FACE.has(pos) && team) return `<span class="${cls} face-team">${tlogo(team)}</span>`;
+    const src = p?.headshot || (/^\d+$/.test(String(p?.id || '')) && !p?.college ? `https://a.espncdn.com/i/headshots/nfl/players/full/${p.id}.png` : '');
+    if (src) return `<img class="${cls}" src="${esc(src)}" alt="" loading="lazy" onerror="this.outerHTML='<div class=&quot;initials&quot;>${initials(p.name)}</div>'">`;
+    return `<div class="initials">${initials(p?.name)}</div>`;
   }
 
   // A team's code as a link to its page
@@ -973,12 +1000,18 @@
   }
   const lgLineup = (team, week) => (team?.lineups || []).find((l) => l.week === week) || (team?.lineups || [])[0] || { starters: [], bench: [] };
   // match a league player to the player ids plays use (ESPN ids; name + team when a league has none)
+  const lgName = (n) => String(n || '').toLowerCase().replace(/\b(jr|sr|ii|iii|iv|v)\.?$/, '').replace(/[^a-z]/g, '');
+  const SITE_TO_ESPN = { WAS: 'WSH', LA: 'LAR' };
   function lgPid(p) {
     if (!p) return null;
     if (p.espnId) return String(p.espnId);
     const k = `${String(p.name || '').toLowerCase()}|${p.team}`;
     const row = (S.lg.plRows || []).find((x) => `${String(x.name).toLowerCase()}|${x.team}` === k);
-    return row ? String(row.id) : null;
+    if (row) return String(row.id);
+    // Anyone else (injured, off the slate): every current player by name and team, then by name alone if it's unique
+    const nm = lgName(p.name), tm = SITE_TO_ESPN[p.team] || p.team, all = S.lg.people || [];
+    const hit = all.find((x) => lgName(x[0]) === nm && x[1] === tm) || (() => { const xs = all.filter((x) => lgName(x[0]) === nm); return xs.length === 1 ? xs[0] : null; })();
+    return hit ? String(hit[2]) : null;
   }
   function lgCollectIds() {
     const ids = new Set();
@@ -1001,6 +1034,7 @@
       S.lg.leagues = (pf.leagues || []).filter((l) => ['ESPN', 'Sleeper'].includes(l.platform));
       S.lg.defaultId = pf.defaultLeagueId;
       if (!S.lg.plRows) { try { S.lg.plRows = (await api('/api/players')).players || []; } catch { S.lg.plRows = []; } }
+      if (!S.lg.people) { try { S.lg.people = (await api('/api/people')).people || []; } catch { S.lg.people = []; } }
       await Promise.all(S.lg.leagues.map(async (l) => {
         const r = await mainGet(`/api/league-scoreboard?league=${encodeURIComponent(l.id)}&period=${lgWeek()}${force ? '&refresh=1' : ''}`).catch(() => ({ ok: false, body: {} }));
         if (r.body?.snapshot) S.lg.snaps[l.id] = r.body.snapshot;
@@ -1037,7 +1071,9 @@
     if (st === 'none') { el.innerHTML = '<div class="empty"><b>No synced leagues yet</b>Connect your ESPN or Sleeper leagues on sidelineff.com and they show up here, live. <a href="/">Go to sidelineff.com</a></div>'; return; }
     const rows = lgSorted();
     const status = (p) => !p ? '' : p.gameState === 'live' ? `<span class="live">Live</span>${p.matchup ? ` · ${esc(p.matchup)}` : ''}` : p.gameState === 'final' ? `Final${p.matchup ? ` · ${esc(p.matchup)}` : ''}` : p.kickoffAt ? kick(Date.parse(p.kickoffAt)) : (p.matchup ? esc(p.matchup) : '');
-    const photo = (p) => { const pid = lgPid(p); const row = pid && (S.lg.plRows || []).find((x) => String(x.id) === pid); return face({ name: p?.name, headshot: row?.headshot, pos: p?.position }, 'face sm'); };
+    const photo = (p) => { const pid = lgPid(p); const row = pid && (S.lg.plRows || []).find((x) => String(x.id) === pid);
+      const person = pid && !row && (S.lg.people || []).find((x) => String(x[2]) === pid);
+      return face({ id: pid, name: p?.name, headshot: row?.headshot || person?.[3] || '', pos: p?.position, team: SITE_TO_ESPN[p?.team] || p?.team }, 'face sm'); };
     const cell = (sl) => {
       const p = sl?.player;
       if (!p) return '<div class="tm-p empty">Empty</div>';
