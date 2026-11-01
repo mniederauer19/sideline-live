@@ -346,7 +346,18 @@
     if (g.odds.total != null) parts.push(`O/U ${g.odds.total}`);
     return parts.join(' · ');
   }
+  // Scores in a side column (wide screens): two games per row, scores right beside each team
+  const railKick = (g) => { const d = new Date(g.start); return isNaN(d) ? '' : d.toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' }).replace(':00', ''); };
+  function renderRail() {
+    const el = $('#rail'); if (!el) return;
+    const cur = currentGameId(), live = S.games.filter((g) => g.state === 'in').length;
+    const row = (t, o, g) => `<span class="sb-r ${g.state === 'post' && t.score < o.score ? 'lose' : ''}">${tlogo(t.abbr)}<span class="${g.state === 'in' && g.possession === t.id ? 'poss' : ''}">${esc(t.abbr)}</span><b>${g.state !== 'pre' ? t.score : ''}</b></span>`;
+    el.innerHTML = S.games.length ? `<section class="sb"><div class="label sb-head"><span>Scores</span>${live ? `<span class="sb-live">${live} live</span>` : ''}</div><div class="sb-grid">
+      ${S.games.map((g) => `<a class="sb-g ${g.state === 'in' ? 'live' : ''} ${cur === g.id ? 'on' : ''}" href="#/game/${esc(g.id)}" aria-label="${esc(g.away.abbr)} at ${esc(g.home.abbr)}">${row(g.away, g.home, g)}${row(g.home, g.away, g)}<span class="sb-s">${g.state === 'pre' ? esc(railKick(g)) : gameStatus(g)}</span></a>`).join('')}
+    </div></section>` : '';
+  }
   function renderStrip() {
+    renderRail();
     const cur = currentGameId();
     $('#strip').innerHTML = S.games.map((g) => {
       const started = g.state !== 'pre';

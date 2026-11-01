@@ -1041,3 +1041,34 @@ html[data-look="modern"] .nav > .glide { width: 26px; height: 13px; bottom: -7px
   .refresh > *, .skel i, .slot.pop, .sheet-wrap.closing .sheet, .sheet-wrap.closing .sheet-scrim { animation: none !important; }
   .pill:active, .opt:active, .btn:active, .add-btn:active, .react:active, .wk:active, .chip-game:active { transform: none; }
 }
+
+/* ---------- scores column (wide screens): replaces the top strip ---------- */
+.rail { display: none; }
+.sb { padding: 16px; border: 1px solid var(--line); border-radius: var(--r-card); background: var(--card); }
+.sb-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.sb-live { color: var(--live); }
+.sb-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.sb-g { display: flex; flex-direction: column; gap: 2px; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--card-2); color: var(--ink); text-decoration: none; min-width: 0; transition: border-color .18s, background-color .18s; }
+.sb-g:hover, .sb-g:focus-visible { border-color: var(--line-2); }
+.sb-g.live { border-color: color-mix(in srgb, var(--live) 55%, var(--line)); }
+.sb-g.on { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 8%, var(--card-2)); }
+.sb-r { display: grid; grid-template-columns: 18px minmax(0, auto) 1fr; align-items: center; gap: 6px; font: 600 13px/1.55 var(--body); }
+.sb-r .tlogo { width: 18px; height: 18px; font-size: 7px; }
+.sb-r b { font: var(--stat-w) 16px/1 var(--stat); text-align: left; font-variant-numeric: tabular-nums; color: var(--ink); }
+.sb-r.lose, .sb-r.lose b { color: var(--muted); }
+.sb-r .poss::after { content: ''; display: inline-block; width: 5px; height: 5px; margin-left: 4px; border-radius: 50%; background: var(--gold); vertical-align: 2px; }
+.sb-s { margin-top: 3px; font: var(--label-w) 9.5px/1.2 var(--label-font); letter-spacing: 1px; text-transform: uppercase; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sb-s .live { color: var(--live); }
+.sb-s .live::before { content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 4px; border-radius: 50%; background: var(--live); vertical-align: 1px; }
+/* 900px and up: scores on the left, plays in the middle (and leaders on the right from 1360px) */
+@media (min-width: 900px) {
+  .strip { display: none; }
+  .rail { display: block; position: sticky; top: 76px; align-self: start; max-height: calc(100vh - 92px); overflow-y: auto; padding-top: 22px; scrollbar-width: thin; }
+  .shell { grid-template-columns: 250px minmax(0, 1fr); gap: 32px; }
+}
+@media (min-width: 900px) and (max-width: 1359px) { .side { display: none; } }
+@media (min-width: 1360px) {
+  .shell, .weeks, .hdr-inner { max-width: 1500px; }
+  .demo-banner, .sync { max-width: calc(1500px - 48px); }
+  .shell { grid-template-columns: 260px minmax(0, 1fr) 300px; gap: 36px; }
+}
