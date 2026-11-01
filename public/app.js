@@ -371,6 +371,11 @@
 
   // ---------- play cards ----------
   function primaryOf(p) {
+    // The parser names who the headline is about (e.g. the player who lost a fumble)
+    const lead = p.lead && p.players.find((x) => String(x.id) === String(p.lead));
+    if (lead) return lead;
+    // Older plays: a lost fumble belongs to the player charged with it
+    if (p.turnover) { const f = p.players.find((x) => x.stat?.fumLost); if (f) return f; }
     return p.players.find((x) => x.pos !== 'DST' && x.role !== 'target') || p.players.find((x) => x.pos !== 'DST') || p.players[0] || null;
   }
   function scoreLine(p) {
@@ -1097,7 +1102,7 @@
       const items = plays.slice().reverse().map((p) => { const x = p.players.find((y) => String(y.id) === String(pid)); const v = x ? adj(x) : 0; run += v; return { p, v, run }; }).reverse();
       const total = row ? fpts(row) : run;
       $('#sheetBody').innerHTML = `<div class="pl-head">${face(info)}<div><div class="label">${esc([info.pos, info.team].filter(Boolean).join(' · '))}${row?.inj ? ` · <span class="inj">${esc(row.inj)}</span>` : ''}</div><div class="pl-total"><b>${fmt(total)}</b> ${unit()} this week</div><div class="sub">${esc(row?.line || '')}</div></div></div>
-        ${items.length ? `<div class="pl-plays">${items.map(({ p, v, run: r }) => `<button class="pl-play" data-act="comments" data-id="${esc(p.id)}"><span class="q">Q${p.period} ${esc(p.clock)}</span><span class="h">${esc(p.headline)}</span><b class="${v < 0 ? 'minus' : v === 0 ? 'zero' : ''}">${signed(v, 1)}</b><small>${fmt(r)}</small></button>`).join('')}</div>` : '<p class="rules">No plays yet this week.</p>'}
+        ${items.length ? `<div class="pl-plays">${items.map(({ p, v, run: r }) => `<button class="pl-play" data-act="comments" data-id="${esc(p.id)}"><span class="q">Q${p.period} ${esc(p.clock)}</span><span class="h">${esc(p.headline)}${p.lead && String(p.lead) !== String(pid) ? ` <small class="sub">(${esc(p.players.find((y) => String(y.id) === String(p.lead))?.name || '')})</small>` : ''}</span><b class="${v < 0 ? 'minus' : v === 0 ? 'zero' : ''}">${signed(v, 1)}</b><small>${fmt(r)}</small></button>`).join('')}</div>` : '<p class="rules">No plays yet this week.</p>'}
         <div id="pcBox"></div>`;
       const gsis = row?.gsis || me?.gsis;
       if (gsis && onMainSite()) loadPlayerComments(gsis, info.name);

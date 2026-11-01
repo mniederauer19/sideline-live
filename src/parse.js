@@ -448,6 +448,8 @@ function parsePlay(raw, ctx) {
     if (recTeam && fumblerTeam && recTeam !== fumblerTeam) {
       add(fumbler && fumbler.id ? fumbler : null, (fumbler && players.get(fumbler.id)?.role) || (returner ? 'returner' : 'fumbler'), -2, { fumLost: 1 },
         fumblerTok, fumblerTeam);
+      // The card leads with whoever lost the ball, so "Fumble lost" is never shown under someone else's name
+      if (fumbler?.id) out.lead = String(fumbler.id);
       const defTd = tdAfterFum;
       dst(recTeam, 2 + (defTd ? 6 : 0), { fumRec: 1 });
       out.headline = defTd ? 'Fumble return TD' : /MUFFS/.test(main) ? 'Muffed punt lost' : 'Fumble lost';
