@@ -381,6 +381,7 @@
   }
   async function selectWeek(w) {
     S.sel = w;
+    if (S.feed.filter === 'mine' && S.week?.week && w !== S.week.week) S.feed.filter = 'all';
     renderWeeks();
     await refreshGames();
     const r = currentRoute();
@@ -672,7 +673,7 @@
     S.feed.loading = false;
   }
   function filterTabs() {
-    return `<div class="pills" role="tablist" aria-label="Filter plays">${FILTERS.map(([k, l]) => `<button class="pill ${S.feed.filter === k ? 'on' : ''}" role="tab" aria-selected="${S.feed.filter === k}" data-act="filter" data-f="${k}">${l}</button>`).join('')}</div>`;
+    return `<div class="pills" role="tablist" aria-label="Filter plays">${FILTERS.filter(([k]) => k !== 'mine' || isCurrentWeek()).map(([k, l]) => `<button class="pill ${S.feed.filter === k ? 'on' : ''}" role="tab" aria-selected="${S.feed.filter === k}" data-act="filter" data-f="${k}">${l}</button>`).join('')}</div>`;
   }
   function pageHead(label, title, aside = '') {
     return `<div class="page-head"><div><div class="label">${label}</div><h1>${title}</h1></div>${aside ? `<div class="aside">${aside}</div>` : ''}</div>`;
@@ -1237,12 +1238,15 @@
       html += `<section><span class="label">${esc(weekLabel())} · PPR leaders</span>${leaders.players.slice(0, 8).map((p, i) => `<div class="mini lead ${S.myLineupIds.has(String(p.id)) ? 'mine' : ''} ${i === 0 ? 'first' : ''}">${face(p, 'face sm')}<span class="who">${esc(p.name)}<small>${esc(p.pos)} · ${esc(p.team)}</small><i class="lead-bar"><i style="width:${Math.max(4, Math.round(p.ppr / top * 100))}%"></i></i></span><span class="v amber">${fmt(p.ppr)}</span></div>`).join('')
         || '<p>Leaders show up once games kick off.</p>'}<a class="foot" href="#/feed">All plays →</a></section>`;
     }
+    // Lineups started this season with the current week: past weeks have none to show
     if (S.me) {
       const lineup = mine?.lineup;
+      if (isCurrentWeek()) {
       html += lineup
         ? `<section><span class="label">My lineup · live</span>${lineup.players.map((p) => `<div class="mini"><em>${esc(SLOT_LABEL[p.slot])}</em><span class="who">${esc(p.name)}</span><span class="v ${p.gameState !== 'pre' ? 'amber' : ''}">${p.gameState === 'pre' ? '–' : fmt(p.points)}</span></div>`).join('')}
             <div class="total"><span class="label" style="margin:0">Total PPR</span><b>${fmt(lineup.points)}</b></div></section>`
         : `<section><span class="label">My lineup</span><h2>Build this week's team</h2><p>Pick a QB, 2 RBs, 2 WRs, a TE and a flex under the cap. Salaries follow sidelineff.com's weekly rankings, so a team of stars won't fit.</p><a class="btn" href="#/lineups">Build lineup</a></section>`;
+      }
     } else {
       html += '<section><span class="label">Play along</span><h2>Join free</h2><p>Pick a username to react to plays, make free picks and build a weekly lineup.</p><button class="btn" data-act="join">Join free</button></section>';
     }
