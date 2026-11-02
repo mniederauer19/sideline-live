@@ -307,8 +307,10 @@ async function myLeagues(req) {
 const msgView = (m, meId) => ({ id: m.id, body: m.body, at: m.created_at, mine: m.user_id === meId, ...who(m.user_id) });
 
 // ======================= REF COURT =======================
-const COURT_RX = /REVERSED|challenge|replay|upheld|overturned|PENALTY|pass interference|roughing/i;
-const courtEligible = (p) => !!p && (p.nullified || p.kind === 'penalty' || COURT_RX.test(p.text || ''));
+// flags that stood (a declined penalty doesn't count) and replay reviews
+const COURT_RX = /REVERSED|challenge|replay|upheld|overturned/i;
+const flagged = (t) => /PENALTY/.test(t) && !/^[^]*PENALTY[^.]*declined[^]*$/i.test(t) || /pass interference|roughing/i.test(t) && !/declined/i.test(t);
+const courtEligible = (p) => !!p && (p.nullified || p.kind === 'penalty' || COURT_RX.test(p.text || '') || flagged(p.text || ''));
 function courtInto(out, ids, userId) {
   if (!ids.length) return;
   const ph = ids.map(() => '?').join(',');

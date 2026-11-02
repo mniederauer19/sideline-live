@@ -132,8 +132,9 @@
   };
 
   // ================= REF COURT =================
-  const COURT_RX = /REVERSED|challenge|replay|upheld|overturned|PENALTY|pass interference|roughing/i;
-  const courtEligible = (p) => !!p && (p.nullified || p.kind === 'penalty' || COURT_RX.test(p.text || ''));
+  const COURT_RX = /REVERSED|challenge|replay|upheld|overturned/i;
+  const flagged = (t) => /PENALTY/.test(t) && !/^[^]*PENALTY[^.]*declined[^]*$/i.test(t) || /pass interference|roughing/i.test(t) && !/declined/i.test(t);
+  const courtEligible = (p) => !!p && (p.nullified || p.kind === 'penalty' || COURT_RX.test(p.text || '') || flagged(p.text || ''));
   SL.hooks.court = (p) => {
     if (!courtEligible(p)) return '';
     const c = p.social?.court || { good: 0, bad: 0, mine: 0 };
