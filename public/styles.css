@@ -1085,3 +1085,5 @@ html[data-look="modern"] .nav > .glide { width: 26px; height: 13px; bottom: -7px
 .prow .prow-face, .prow .initials { width: 40px; height: 40px; font-size: 15px; }
 .prow .face-team img, .slot .face-team img { width: 80%; height: 80%; border-radius: 0; background: none; object-fit: contain; }
 .slot .initials { font-size: 13px; }
+
+.pill .pk-n { margin-left: 6px; opacity: .7; letter-spacing: .5px; }

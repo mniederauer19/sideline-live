@@ -789,9 +789,38 @@
     view.innerHTML = `${pageHead(weekLabel(), 'Free picks', 'Game winners, spreads and totals<br>Free to play · picks lock at kickoff')}
       ${me ? `<div class="wallet"><div><b class="amber">${me.credits.toLocaleString()}</b><span>Credits</span></div><div><b>#${me.rank}</b><span>${esc(me.tier)}</span></div><div><b>${me.record.w}-${me.record.l}${me.record.p ? `-${me.record.p}` : ''}</b><span>Winner record</span></div></div>` : ''}
       <p class="rules">Pick the winner of each game: that's your record. Spread and total picks are separate and don't count toward your record. Every right pick is +100 credits, a wrong pick −50, a push 0, and credits decide your rank. Picks lock at kickoff.</p>
-      <div id="pickList"></div>`;
+      <div class="pills" id="pkWeeks" role="tablist" aria-label="Week"></div>
+      <div id="pickList">${skel(4, 'cards')}</div>`;
     await refreshGames();
-    $('#pickList').innerHTML = S.games.map(pickGame).join('') || '<div class="empty"><b>No games this week yet</b></div>';
+    // Picks are open for the week you're looking at and the week after it
+    const base = S.sel || S.week?.week;
+    const weeks = [base, base + 1].filter((w) => w && (!S.schedule.length || S.schedule.some((x) => x.week === w)));
+    const lists = await Promise.all(weeks.map((w) => (w === S.sel ? Promise.resolve({ games: S.games }) : api(`/api/games?week=${w}`).catch(() => ({ games: [] })))));
+    S.pickGames = Object.fromEntries(weeks.map((w, i) => [w, lists[i].games || []]));
+    const open = (w) => (S.pickGames[w] || []).filter((g) => g.pickOpen).length;
+    if (!weeks.includes(S.pickWeek)) {
+      const [a, b] = weeks;
+      S.pickWeek = b && (open(a) === 0 || (open(a) <= 2 && open(b) > open(a))) ? b : a;
+    }
+    drawPicks();
+  }
+  const wkName = (w) => S.schedule.find((x) => x.week === w)?.label || `Week ${w}`;
+  function drawPicks(animate = false) {
+    const box = $('#pkWeeks'), list = $('#pickList');
+    if (!box || !list) return;
+    const weeks = Object.keys(S.pickGames || {}).map(Number);
+    const cur = S.week?.week;
+    box.innerHTML = weeks.map((w) => {
+      const n = (S.pickGames[w] || []).filter((g) => g.pickOpen).length;
+      const tag = w === cur ? 'This week' : w === cur + 1 ? 'Next week' : '';
+      return `<button class="pill ${S.pickWeek === w ? 'on' : ''}" role="tab" aria-selected="${S.pickWeek === w}" data-act="pkweek" data-w="${w}">${esc(tag ? `${tag} · ${wkName(w)}` : wkName(w))} <span class="pk-n">${n} open</span></button>`;
+    }).join('');
+    const games = S.pickGames[S.pickWeek] || [];
+    S.pickById = new Map(Object.values(S.pickGames).flat().map((g) => [g.id, g]));
+    // open games first, in kickoff order; finished and locked games after
+    const sorted = games.slice().sort((a, b) => (b.pickOpen - a.pickOpen) || (a.start - b.start));
+    list.innerHTML = sorted.map(pickGame).join('') || `<div class="empty"><b>No games for ${esc(wkName(S.pickWeek))} yet</b>The schedule and Vegas lines show up here as soon as they're posted.</div>`;
+    if (animate) refreshAnim(list);
   }
   async function refreshGames() {
     const r = await api(`/api/games${S.sel ? `?week=${S.sel}` : ''}`);
@@ -1376,14 +1405,18 @@
         case 'pick': {
           if (!requireUser()) return;
           await api('/api/picks', { method: 'POST', body: { gameId: t.dataset.game, market: t.dataset.m, selection: t.dataset.sel } });
-          await refreshGames();
-          const g = S.gamesById.get(t.dataset.game);
+          // refresh the week this game is in (it may be next week's)
+          const pw = Object.entries(S.pickGames || {}).find(([, list]) => list.some((x) => x.id === t.dataset.game))?.[0];
+          if (pw && Number(pw) !== S.sel) { try { S.pickGames[pw] = (await api(`/api/games?week=${pw}`)).games; } catch { /* keep */ } }
+          else { await refreshGames(); if (pw) S.pickGames[pw] = S.games; }
+          const g = (pw && S.pickGames[pw].find((x) => x.id === t.dataset.game)) || S.gamesById.get(t.dataset.game);
           const holder = t.closest('.pick-game');
           if (holder && g) holder.outerHTML = pickGame(g);
           toast('Pick saved. You can change it until kickoff.');
           break;
         }
         case 'lutab': S.luTab = t.dataset.t; markEnter(); showLineups(); break;
+        case 'pkweek': S.pickWeek = Number(t.dataset.w); drawPicks(true); break;
         case 'add': addToDraft(t.dataset.pid); break;
         case 'pos': S.pos = t.dataset.p; renderBuilder(); break;
         case 'unpick': {
