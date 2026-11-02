@@ -9,6 +9,7 @@ const sidelineAuth = require('./src/sideline-auth');
 const tradeValues = require('./src/trade-values');
 const weeklyRanks = require('./src/weekly-ranks');
 const persist = require('./src/persist');
+const arcade = require('./src/arcade');
 const { isOffensive } = require('./src/moderation');
 
 const app = express();
@@ -298,6 +299,7 @@ function social(ids, userId) {
     for (const r of db.prepare(`SELECT play_id, emoji FROM reactions WHERE user_id=? AND play_id IN (${ph})`).all(userId, ...ids)) out[r.play_id].mine.push(r.emoji);
     for (const r of db.prepare(`SELECT play_id, value FROM votes WHERE user_id=? AND play_id IN (${ph})`).all(userId, ...ids)) out[r.play_id].myVote = r.value;
   }
+  arcade.courtInto(out, ids, userId); // Ref Court votes
   return out;
 }
 function withSocial(plays, userId) {
@@ -573,6 +575,9 @@ app.get('/api/lineups', (req, res) => {
   res.json({ ...w, lineups: out, popular });
 });
 
+// ---------- the Arcade: Call It, Daily, rooms, Ref Court, takes, duels, aura, wrapped, alerts (src/arcade.js) ----------
+arcade.mount(app, { needUser, pricedSlate, send: (event, data) => send(event, data) });
+
 // ---------- live push (Server-Sent Events) ----------
 const clients = new Set();
 const BOOT_ID = Date.now().toString(36);
@@ -636,8 +641,8 @@ function sendIndex(req, res) {
   let html = require('fs').readFileSync(INDEX_FILE, 'utf8');
   html = html
     .replace('<head>', `<head>\n  <script>window.SIDELINE_API = ${JSON.stringify(prefix)};</script>`)
-    .replace('href="styles.css"', `href="${prefix}/styles.css"`)
-    .replace('src="app.js"', `src="${prefix}/app.js"`);
+    // every file next to the page (styles, scripts, app icon, manifest) is pointed at the prefix
+    .replace(/(href|src)="(?!https?:|\/|#|data:)([^"]+)"/g, `$1="${prefix}/$2"`);
   res.type('html').send(html);
 }
 app.get(['/', '/index.html'], sendIndex);
@@ -677,6 +682,7 @@ process.on('SIGTERM', async () => {
   // Bring back saved accounts, comments, picks and lineups first (when DATABASE_URL is set)
   await persist.restoreWithRetry();
   cleanUpOffensive();
+  arcade.start();
   nflverse.start();
   tradeValues.start();
   weeklyRanks.start();

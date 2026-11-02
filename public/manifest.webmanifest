@@ -1,0 +1,21 @@
+{
+  "name": "Sideline Live",
+  "short_name": "Sideline",
+  "description": "Every NFL play, live, in PPR. Call It, Sideline Daily, picks, lineups and your synced teams.",
+  "start_url": "./#/feed",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#141310",
+  "theme_color": "#141310",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Live plays", "url": "./#/feed" },
+    { "name": "Sideline Daily", "url": "./#/daily" },
+    { "name": "My teams", "url": "./#/leagues" }
+  ]
+}

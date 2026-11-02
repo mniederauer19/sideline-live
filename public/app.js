@@ -16,7 +16,7 @@
     games: [],
     gamesById: new Map(),
     week: null,
-    feed: { plays: [], next: null, filter: 'all', game: null, loading: false },
+    feed: { plays: [], next: null, filter: 'all', game: null, loading: false, mode: (() => { try { return localStorage.getItem('sl-feed-mode'); } catch { return null; } })() || (window.matchMedia('(max-width: 720px)').matches ? 'swipe' : 'list') },
     pending: [],
     pickerFor: null,
     myLineupIds: new Set(),
@@ -485,6 +485,7 @@
     const note = avg ? `<div class="pace-note"><b>${Math.round(today / avg * 100)}%</b> of his ${fmt(avg)} PPR season average${extra.length ? ` · ${esc(extra.join(' · '))}` : ''}</div>` : '';
     return `<div class="pace"><div class="pace-top"><span class="today">${fmt(today)}</span><span class="label">${unit()} today</span>${pl.gameLine ? `<span class="line">${esc(pl.gameLine)}</span>` : ''}</div>${bar}${note}</div>`;
   }
+  const shareIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M7 8l5-5 5 5M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6"/></svg>';
   const chatIcon = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4C6.8 4 3 7.3 3 11.2c0 2.2 1.2 4.1 3.2 5.4L5.5 20l4-2.1c.8.2 1.6.3 2.5.3 5.2 0 9-3.3 9-7S17.2 4 12 4z"/></svg>';
   function actions(p) {
     const s = p.social || { reactions: {}, mine: [], score: 0, myVote: 0, comments: 0 };
@@ -493,7 +494,8 @@
     const picker = S.pickerFor === p.id
       ? `<span class="picker">${EMOJIS.map((e) => `<button data-act="react" data-id="${esc(p.id)}" data-e="${e}" aria-label="React ${e}">${e}</button>`).join('')}</span>`
       : `<button class="react add" data-act="picker" data-id="${esc(p.id)}" aria-label="Add reaction">React</button>`;
-    return `<div class="actions" data-social="${esc(p.id)}">
+    const xtra = window.SL?.hooks || {};
+    return `<div class="act-wrap" data-social="${esc(p.id)}">${xtra.court ? xtra.court(p) : ''}<div class="actions">
       <span class="vote" role="group" aria-label="Rate this play">
         <button class="up ${s.myVote === 1 ? 'on' : ''}" data-act="vote" data-id="${esc(p.id)}" data-v="1" aria-label="Upvote">▲</button>
         <span class="n">${s.score}</span>
@@ -501,7 +503,8 @@
       </span>
       ${reacts}${picker}
       <button class="cmt-btn" data-act="comments" data-id="${esc(p.id)}" aria-label="Comments">${chatIcon}${s.comments}</button>
-    </div>`;
+      <button class="share-btn" data-act="share" data-id="${esc(p.id)}" aria-label="Share this play" title="Share this play">${shareIcon}<span>Share</span></button>
+    </div></div>`;
   }
   // A mini field showing where the play started and where it ended
   const FIELD_KINDS = new Set(['catch', 'rush', 'sack']);
@@ -537,6 +540,7 @@
     if (p.td) out.push('<span class="badge td">Touchdown</span>');
     if (p.kind === 'int' || p.players.some((x) => x.stat?.fumLost)) out.push('<span class="badge to">Turnover</span>');
     else if (p.explosive && !p.td) out.push('<span class="badge big">Big play</span>');
+    if (window.SL?.hooks?.aura) out.push(window.SL.hooks.aura(p));
     return out.join('');
   }
   // Fresh plays count their points up from zero
@@ -631,12 +635,13 @@
     }
     const hot = S.hot.get(g.id);
     const side = (t, o) => `<div class="lc-team ${t.score < o.score ? 'trail' : ''}">${tlogo(t.abbr)}<span class="ab">${esc(t.abbr)}</span>${possTeam === t ? '<i class="lc-poss" title="Has the ball"></i>' : ''}<b>${t.score}</b></div>`;
-    return `<a class="live-card ${g.redZone ? 'rz' : ''}" href="#/game/${esc(g.id)}" style="--a:${esc(g.away.color || '#555')};--h:${esc(g.home.color || '#555')}">
+    const callIt = window.SL?.hooks?.liveExtra ? window.SL.hooks.liveExtra(g) : '';
+    return `<div class="lc-wrap" data-lc="${esc(g.id)}"><a class="live-card ${g.redZone ? 'rz' : ''}" href="#/game/${esc(g.id)}" style="--a:${esc(g.away.color || '#555')};--h:${esc(g.home.color || '#555')}">
       <div class="lc-top"><span class="lc-live"><i></i>Live</span><span>${esc(g.detail || '')}</span>${g.redZone ? '<span class="lc-rz">Red zone</span>' : ''}<span class="lc-tv">${esc(g.broadcast || '')}</span></div>
       <div class="lc-score">${side(g.away, g.home)}${side(g.home, g.away)}</div>
       ${field}
       ${hot ? `<div class="lc-hot">${face(hot, 'face sm')}<span><small>Hottest right now</small>${esc(hot.name)}</span><b>${fmt(adjToday(hot))}</b></div>` : ''}
-    </a>`;
+    </a>${callIt}</div>`;
   }
   function renderLive() {
     const el = $('#liveNow');
@@ -684,9 +689,19 @@
     const sw = S.schedule.find((x) => x.week === w);
     return `${sw?.label || `Week ${w}`} · ${S.week?.season || ''}`;
   };
+  // Swipe mode: one big play per screen. While games are live the newest is first; otherwise the most exciting.
+  const swipeOn = () => S.feed.mode === 'swipe' && !S.feed.game;
+  function excite(p) {
+    const pr = primaryOf(p), s = p.social || {};
+    const r = Object.values(s.reactions || {}).reduce((a, b) => a + b, 0);
+    return Math.abs(pr ? adj(pr) : 0) + (p.td ? 12 : 0) + (p.explosive ? 6 : 0) + (p.kind === 'int' || p.turnover ? 8 : 0) + r * 2 + (s.score || 0) + (s.comments || 0) * 2 + (isMine(p) ? 10 : 0);
+  }
   function renderFeedList() {
     const el = $('#feedList');
     if (!el) return;
+    const swipe = swipeOn();
+    el.classList.toggle('swipe', swipe);
+    document.documentElement.classList.toggle('snap-feed', swipe);
     let html = '';
     if (S.pending.length) html += `<button class="new-plays" data-act="show-new">${S.pending.length} new play${S.pending.length > 1 ? 's' : ''}</button>`;
     if (!S.feed.plays.length) {
@@ -702,8 +717,13 @@
         })();
       html += `<div class="empty">${msg}</div>`;
     } else {
-      html += S.feed.plays.map((p) => playCard(p)).join('');
-      if (S.feed.next) html += '<button class="more" data-act="more">Load earlier plays</button>';
+      let list = S.feed.plays;
+      if (swipe) {
+        list = list.filter((p) => p.players?.length || !['kickoff', 'punt', 'penalty', 'other'].includes(p.kind));
+        if (!(isCurrentWeek() && S.games.some((g) => g.state === 'in'))) list = list.slice().sort((a, b) => excite(b) - excite(a));
+      }
+      html += list.map((p) => playCard(p)).join('');
+      if (S.feed.next) html += `<button class="more" data-act="more">${swipe ? 'Load more plays' : 'Load earlier plays'}</button>`;
     }
     el.innerHTML = html;
   }
@@ -712,7 +732,9 @@
     const games = S.games.length, done = S.games.filter((g) => g.state === 'post').length;
     const aside = isCurrentWeek() ? 'Standard PPR · updated every play<br>Plays from ESPN · season stats from nflverse'
       : `Standard PPR · ${games} games${done && done < games ? `, ${done} final` : done ? ', all final' : ''}<br>Plays from ESPN · season stats from nflverse`;
-    view.innerHTML = `${pageHead(`${weekLabel()}${isCurrentWeek() ? ' · Live' : ''}`, 'Every play, in PPR', `${aside}<div class="fmt-row">${fmtSeg()}</div>`)}<section id="liveNow" class="live-now" hidden></section>${filterTabs()}<div class="feed" id="feedList"></div>`;
+    const modeSeg = `<div class="feed-modes"><span class="fmt-seg mode-seg" role="radiogroup" aria-label="Layout"><button type="button" class="${S.feed.mode !== 'swipe' ? 'on' : ''}" data-act="feedmode" data-v="list">List</button><button type="button" class="${S.feed.mode === 'swipe' ? 'on' : ''}" data-act="feedmode" data-v="swipe">Swipe</button></span>
+      <button type="button" class="pill just-mine ${S.feed.filter === 'team' ? 'on' : ''}" data-act="justmine" title="Only plays from players on your synced teams">Just my players</button></div>`;
+    view.innerHTML = `${pageHead(`${weekLabel()}${isCurrentWeek() ? ' · Live' : ''}`, 'Every play, in PPR', `${aside}<div class="fmt-row">${fmtSeg()}</div>`)}<section id="liveNow" class="live-now" hidden></section>${modeSeg}${filterTabs()}<div class="feed" id="feedList"></div>`;
     renderLive();
     loadFeed();
   }
@@ -736,7 +758,8 @@
     if (!g) { view.innerHTML = '<div class="empty"><b>Game not found</b><a href="#/feed">Back to all plays</a></div>'; return; }
     S.feed.game = id;
     const tabs = [['plays', 'Plays'], ['fantasy', 'Fantasy'], ['picks', 'Picks']];
-    view.innerHTML = `${gameHeader(g)}<div class="pills">${tabs.map(([k, l]) => `<button class="pill ${gameTab === k ? 'on' : ''}" data-act="gtab" data-t="${k}">${l}</button>`).join('')}</div><div id="gbody"></div>`;
+    const gameCall = g.state === 'in' && window.SL?.hooks?.liveExtra ? `<div class="gh-call" data-lc="${esc(g.id)}">${window.SL.hooks.liveExtra(g)}</div>` : '';
+    view.innerHTML = `${gameHeader(g)}${gameCall}<div class="pills">${tabs.map(([k, l]) => `<button class="pill ${gameTab === k ? 'on' : ''}" data-act="gtab" data-t="${k}">${l}</button>`).join('')}</div><div id="gbody"></div>`;
     const body = $('#gbody');
     if (gameTab === 'plays') {
       body.innerHTML = `${filterTabs()}<div class="feed" id="feedList"></div>`;
@@ -1076,6 +1099,7 @@
       for (const sl of [...(lu.starters || []), ...(lu.bench || [])]) { const pid = lgPid(sl.player); if (pid) ids.add(pid); }
     }
     S.myFantasyIds = ids;
+    window.SL?.hooks?.fantasyIds?.();
   }
   async function loadLeagues(force = false) {
     if (S.lg.loading) return S.lg.loading;
@@ -1148,12 +1172,13 @@
       const share = mine.opp && (mine.me.score || 0) + (mine.opp.score || 0) > 0 ? (mine.me.score || 0) / ((mine.me.score || 0) + (mine.opp.score || 0)) * 100 : 50;
       const bench = (A.bench || []).filter((x) => x.player);
       return `<section class="lg-card" id="lg-${esc(l.id)}">
-        <div class="lg-top"><div><span class="label">${esc(l.platform)}${mine.me.record ? ` · ${esc(mine.me.record)}` : ''}${l.id === S.lg.defaultId ? ' · default' : ''}</span><h2>${esc(l.name || snap.leagueName)}</h2></div>${err ? `<span class="lg-warn">${esc(err)}</span>` : ''}</div>
+        <div class="lg-top"><div><span class="label">${esc(l.platform)}${mine.me.record ? ` · ${esc(mine.me.record)}` : ''}${l.id === S.lg.defaultId ? ' · default' : ''}</span><h2>${esc(l.name || snap.leagueName)}</h2></div>${err ? `<span class="lg-warn">${esc(err)}</span>` : ''}<a class="pill lg-room" href="#/room/${encodeURIComponent(l.id)}">💬 League room</a></div>
         <div class="tm-head">
           <div class="tm-side me"><small>${esc(mine.me.name)}</small><b>${mine.me.score == null ? '–' : fmt(mine.me.score)}</b><span>${playing ? `${playing} playing · ` : ''}${left} yet to play</span></div>
           <div class="tm-vs">vs</div>
           <div class="tm-side"><small>${mine.opp ? esc(mine.opp.name) : 'Bye week'}</small><b>${mine.opp && mine.opp.score != null ? fmt(mine.opp.score) : '–'}</b><span>${mine.opp ? `${oppLeft} yet to play` : ''}</span></div>
           <div class="tm-bar"><i style="width:${share}%"></i></div></div>
+        ${window.SL?.hooks?.sweat ? window.SL.hooks.sweat(A, B, mine) : ''}
         <div class="tm-grid ${B ? 'two' : ''}">${lines}</div>
         ${bench.length ? `<details class="tm-bench"><summary class="label">Bench · ${fmt(bench.reduce((a, x) => a + (x.player.score || 0), 0))} pts</summary>${bench.map((x) => `<div class="tm-row"><span class="tm-slot">${esc(x.slot || 'BN')}</span>${cell(x)}</div>`).join('')}</details>` : ''}
       </section>`;
@@ -1341,7 +1366,8 @@
     for (const p of targets) {
       const mine = p.social?.mine || [];
       const myVote = p.social?.myVote || 0;
-      p.social = { ...social, mine: keepMine ? mine : social.mine, myVote: keepMine ? myVote : social.myVote };
+      const court = social.court ? { ...social.court, mine: keepMine ? p.social?.court?.mine || 0 : social.court.mine || 0 } : p.social?.court;
+      p.social = { ...social, mine: keepMine ? mine : social.mine, myVote: keepMine ? myVote : social.myVote, ...(court ? { court } : {}) };
     }
     rerenderActions(id);
   }
@@ -1366,6 +1392,8 @@
         case 'join': e.preventDefault(); requireUser(); break;
         case 'filter': S.feed.filter = t.dataset.f; document.querySelectorAll('[data-act="filter"]').forEach((b) => { b.classList.toggle('on', b === t); b.setAttribute('aria-selected', b === t); }); if (S.feed.filter === 'mine') await loadMyLineupIds(); loadFeed(); break;
         case 'more': loadFeed(true); break;
+        case 'feedmode': S.feed.mode = t.dataset.v; ls.set('sl-feed-mode', S.feed.mode); document.querySelectorAll('[data-act="feedmode"]').forEach((b) => b.classList.toggle('on', b === t)); swap(renderFeedList); break;
+        case 'justmine': S.feed.filter = S.feed.filter === 'team' ? 'all' : 'team'; t.classList.toggle('on', S.feed.filter === 'team'); document.querySelectorAll('[data-act="filter"]').forEach((b) => b.classList.toggle('on', b.dataset.f === S.feed.filter)); loadFeed(); break;
         case 'show-new': S.feed.plays = S.pending.concat(S.feed.plays); S.pending = []; renderFeedList(); window.scrollTo({ top: 0 }); break;
         case 'gtab': gameTab = t.dataset.t; markEnter(); showGame(S.feed.game); break;
         case 'picker': S.pickerFor = S.pickerFor === id ? null : id; rerenderActions(id); break;
@@ -1400,6 +1428,7 @@
           S.alerts = !S.alerts; ls.set('sl-alerts', S.alerts ? '1' : null);
           t.classList.toggle('on', S.alerts); t.textContent = S.alerts ? 'Score alerts on' : 'Alert me when my players score';
           toast(S.alerts ? 'You\'ll get an alert when your players score or turn it over.' : 'Score alerts off.');
+          window.SL?.hooks?.alerts?.(S.alerts);
           break;
         }
         case 'pick': {
@@ -1438,7 +1467,7 @@
           renderSide();
           break;
         }
-        default: break;
+        default: if (window.SL?.acts?.[act]) await window.SL.acts[act](t, e); break;
       }
     } catch (err) { toast(err.message); }
   });
@@ -1522,7 +1551,9 @@
     openSheet('Your account', `<div class="acct-card">${avatarHtml(pr, 56)}<div>${userTag(pr, S.me.name)}${pr.title ? `<div class="sub">${esc(pr.title)}</div>` : ''}</div></div>
       <div class="acct-stats"><div><b>${S.me.credits.toLocaleString()}</b><span>Credits</span></div><div><b>#${S.me.rank}</b><span>${esc(S.me.tier)}</span></div><div><b>${S.me.record.w}-${S.me.record.l}${S.me.record.p ? `-${S.me.record.p}` : ''}</b><span>Picks record</span></div></div>
       <div class="acct-links">${profileUrl(pr.username) ? `<a class="btn" href="${esc(profileUrl(pr.username))}">Your public profile</a>` : ''}<a class="btn ghost" href="/account">Edit profile</a><a class="btn ghost" href="#/ranks" data-close>Ranks</a></div>
+      <div id="acctExtra"></div>
       <p class="rules">Same account and profile as sidelineff.com. Change your photo, color or badge there and it shows here too.</p>`);
+    window.SL?.hooks?.account?.();
   });
 
   function rerenderActions(id) {
@@ -1534,6 +1565,7 @@
   // ---------- live stream ----------
   function connect() {
     const es = new EventSource(`${API}/api/stream`);
+    window.SL?.hooks?.stream?.(es);
     // Auto-refresh while developing: after a file change, or when the server restarts with new code
     let boot = null;
     es.addEventListener('hello', (e) => {
@@ -1573,12 +1605,13 @@
       notePlays([p]);
       renderLive();
       alertFor(p);
+      if (isMine(p) && p.td && !document.hidden) { try { navigator.vibrate?.([80, 40, 160]); } catch { /* not supported */ } }
       if (S.lg.status === 'ok' && isMine(p)) lgSoon(15000);
       if (currentRoute() === 'players' && Date.now() - S.pl.at > 8000) loadPlayers();
       if (currentRoute() === 'team' && S.tm.data?.game?.id === p.gameId && Date.now() - (S.tm.at || 0) > 5000) { S.tm.at = Date.now(); loadTeam(); }
       if (!$('#feedList') || !matchesFeed(p)) return;
       if (S.feed.plays.some((x) => x.id === p.id)) return;
-      if (window.scrollY < 300 && !S.pending.length) {
+      if (window.scrollY < 300 && !S.pending.length && !(swipeOn() && !S.games.some((g) => g.state === 'in'))) {
         S.feed.plays.unshift(p);
         const list = $('#feedList');
         const empty = list.querySelector('.empty');
@@ -1629,8 +1662,10 @@
   function currentGameId() { const m = location.hash.match(/^#\/game\/(.+)$/); return m ? decodeURIComponent(m[1]) : null; }
   function route() {
     const r = currentRoute();
-    document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('on', a.dataset.nav === r || (r === 'game' && a.dataset.nav === 'feed') || (r === 'team' && a.dataset.nav === 'players')));
+    const navFor = window.SL?.navFor?.[r];
+    document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('on', a.dataset.nav === (navFor || r) || (r === 'game' && a.dataset.nav === 'feed') || (r === 'team' && a.dataset.nav === 'players')));
     S.pickerFor = null;
+    document.documentElement.classList.remove('snap-feed');
     markEnter();
     renderStrip();
     if (r === 'game') { showGame(currentGameId()); }
@@ -1640,10 +1675,21 @@
     else if (r === 'players') showPlayers();
     else if (r === 'team') showTeam(currentTeam());
     else if (r === 'leagues') showLeagues();
+    else if (window.SL?.routes?.[r]) window.SL.routes[r](location.hash);
     else { gameTab = 'plays'; showFeed(); }
     window.scrollTo({ top: 0 });
   }
   window.addEventListener('hashchange', () => swap(route));
+
+  // ---------- shared with arcade.js (Call It, Daily, rooms, share cards...) ----------
+  window.SL = Object.assign(window.SL || {}, {
+    S, api, esc, fmt, signed, money, toast, openSheet, closeSheet, requireUser, tlogo, logoSrc, face, avatarHtml, userTag, profileUrl,
+    pageHead, skel, markEnter, refreshAnim, swap, tween, teamInfo, primaryOf, adj, adjToday, unit, playCard, isMine, findPlay,
+    currentRoute, kick, kickoff, ago, loadLeagues, lgMine, lgLineup, lgPid, lgWeek, weekLabel, isCurrentWeek, onMainSite, mainGet,
+    openComments, openPlayer, renderFeedList, renderLive, loadMe, renderMe, renderSide, refreshGames, glideSoon, ls, calm, API,
+  });
+  window.SL.routes ||= {}; window.SL.acts ||= {}; window.SL.hooks ||= {};
+  window.SL.ready?.();
 
   (async () => {
     await Promise.all([loadMe(), refreshGames().catch(() => {}), loadSchedule()]);
