@@ -10,6 +10,7 @@ const tradeValues = require('./src/trade-values');
 const weeklyRanks = require('./src/weekly-ranks');
 const persist = require('./src/persist');
 const arcade = require('./src/arcade');
+const arcadePlus = require('./src/arcade-plus');
 const { isOffensive } = require('./src/moderation');
 
 const app = express();
@@ -577,6 +578,7 @@ app.get('/api/lineups', (req, res) => {
 
 // ---------- the Arcade: Call It, Daily, rooms, Ref Court, takes, duels, aura, wrapped, alerts (src/arcade.js) ----------
 arcade.mount(app, { needUser, pricedSlate, send: (event, data) => send(event, data) });
+arcadePlus.mount(app, { needUser }); // props, moment cards, red zone alerts, the locker
 
 // ---------- live push (Server-Sent Events) ----------
 const clients = new Set();
@@ -683,6 +685,7 @@ process.on('SIGTERM', async () => {
   await persist.restoreWithRetry();
   cleanUpOffensive();
   arcade.start();
+  arcadePlus.start();
   nflverse.start();
   tradeValues.start();
   weeklyRanks.start();

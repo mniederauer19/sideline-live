@@ -1188,6 +1188,7 @@
         <label class="lg-sort"><span class="label">Sort</span><select id="lgSort">${LG_SORTS.map(([k, t]) => `<option value="${k}" ${S.lg.sort === k ? 'selected' : ''}>${t}</option>`).join('')}</select></label>
         <a class="pill" href="#/feed" data-act="team-feed">Plays from my teams</a>
         <button class="pill ${S.alerts ? 'on' : ''}" data-act="alerts">${S.alerts ? 'Score alerts on' : 'Alert me when my players score'}</button>
+        ${window.SL?.hooks?.lgTools ? window.SL.hooks.lgTools() : ''}
         <button class="pill" data-act="lg-refresh">Refresh</button>
         <span class="lg-ago">${ago != null ? `Updated ${ago < 60 ? `${ago}s` : `${Math.round(ago / 60)}m`} ago` : ''}</span>
       </div>
@@ -1491,6 +1492,7 @@
     else { html.style.removeProperty('--accent-d'); html.style.removeProperty('--accent-l'); }
     const tb = $('#themeBtn');
     if (tb) tb.setAttribute('aria-label', d.theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode');
+    window.SL?.hooks?.theme?.(); // a color theme picked in the Locker
   }
   function setSetting(key, value) {
     const map = { look: 'sideline-look', theme: 'sideline-theme', accent: 'sideline-accent', photos: 'sideline-photos', logos: 'sideline-logos' };

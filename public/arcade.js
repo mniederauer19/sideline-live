@@ -13,10 +13,14 @@
   const buzz = (p) => { try { if (!document.hidden) navigator.vibrate?.(p); } catch { /* not supported */ } };
   const pageBase = () => location.href.split('#')[0];
   const linkTo = (hash) => `${pageBase()}${hash}`;
+  // a name with the tag style its owner picked in the Locker
+  const TAG_EMOJI = { flame: '🔥', crown: '👑', diamond: '💎' };
+  const nameTag = (w) => `<span class="nt nt-${esc(w?.tag || 'plain')}">${userTag(w?.profile, w?.name)}${TAG_EMOJI[w?.tag] ? `<i class="nt-e">${TAG_EMOJI[w.tag]}</i>` : ''}${w?.level > 1 ? `<span class="nt-lv" title="Live level">L${esc(w.level)}</span>` : ''}</span>`;
+  SL.nameTag = nameTag;
   const timeLeft = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`; };
 
   // Which tab lights up for each page
-  SL.navFor = { arcade: 'arcade', daily: 'arcade', takes: 'arcade', court: 'arcade', aura: 'arcade', duels: 'arcade', duel: 'arcade', house: 'arcade', wrapped: 'arcade', room: 'leagues', play: 'feed' };
+  SL.navFor = { props: 'arcade', cards: 'arcade', trade: 'arcade', locker: 'arcade', arcade: 'arcade', daily: 'arcade', takes: 'arcade', court: 'arcade', aura: 'arcade', duels: 'arcade', duel: 'arcade', house: 'arcade', wrapped: 'arcade', room: 'leagues', play: 'feed' };
 
   // ================= confetti =================
   function confetti(el, n = 22) {
@@ -275,6 +279,7 @@
     if (note) pill(ctx, note.slice(0, 44), W / 2, 1690, bad ? 'rgba(217,85,90,0.25)' : 'rgba(236,229,214,0.12)', '#fff');
     const reacts = Object.entries(p.social?.reactions || {}).filter(([, k]) => k > 0).sort((a, b) => b[1] - a[1]).slice(0, 4);
     if (reacts.length) { ctx.font = '600 44px "DM Sans", sans-serif'; ctx.fillStyle = '#ece5d6'; ctx.fillText(reacts.map(([e, k]) => `${e} ${k}`).join('    '), W / 2, 1600); }
+    SL.hooks.frameCard?.(ctx, W, H);
     return c;
   }
   async function drawStatCard({ title, sub, big, bigLabel, rows, color, avatarUrl, avatarText }) {
@@ -297,6 +302,7 @@
       ctx.textAlign = 'right'; ctx.fillStyle = '#fff'; ctx.font = '700 50px "Barlow Condensed", sans-serif'; ctx.fillText(String(v), W - 150, y + 2);
       y += 118;
     }
+    SL.hooks.frameCard?.(ctx, W, H);
     return c;
   }
   async function shareCanvas(canvas, { text, url, filename }) {
@@ -503,7 +509,7 @@
     else if (t.phase === 'grade') foot = `<div class="tk-grade"><span>Time's up. Did it hit?</span><button class="tk-b w ${t.my.grade === 1 ? 'on' : ''}" data-act="tvote" data-id="${t.id}" data-p="grade" data-v="1" ${t.mine ? 'disabled' : ''}>✅ Hit <b>${v.hit}</b></button><button class="tk-b l ${t.my.grade === -1 ? 'on' : ''}" data-act="tvote" data-id="${t.id}" data-p="grade" data-v="-1" ${t.mine ? 'disabled' : ''}>❌ Miss <b>${v.miss}</b></button></div>
       <div class="tk-meta">Voting closes in ${timeLeft(t.settleAt + 72 * 3600e3 - Date.now())} · it was ${v.w}-${v.l} W/L when posted</div>`;
     else foot = `<div class="tk-stamp ${t.result}">${t.result === 'hit' ? 'RECEIPT ✅ It hit' : t.result === 'miss' ? 'MISS ❌ It aged badly' : 'Unsettled: not enough votes'}</div><div class="tk-meta">${gt} graded · ${v.w}-${v.l} W/L when posted</div>`;
-    return `<article class="take ${t.phase}" data-take="${t.id}"><div class="tk-by">${avatarHtml(t.author.profile, 30)}${userTag(t.author.profile, t.author.name)}${recTxt}<span class="sub">${SL.ago(t.at)}</span><button class="share-btn sm" data-act="tshare" data-id="${t.id}" aria-label="Share this take">Share</button></div>
+    return `<article class="take ${t.phase}" data-take="${t.id}"><div class="tk-by">${avatarHtml(t.author.profile, 30)}${nameTag(t.author)}${recTxt}<span class="sub">${SL.ago(t.at)}</span><button class="share-btn sm" data-act="tshare" data-id="${t.id}" aria-label="Share this take">Share</button></div>
       <p class="tk-body">“${esc(t.body)}”</p>${foot}</article>`;
   }
   SL.acts.ttab = (t) => { S.takes.tab = t.dataset.t; loadTakes(); };
@@ -528,7 +534,7 @@
   const duelSide = (s, label) => {
     if (!s) return `<div class="du-side empty"><div class="du-ava">?</div><b>Waiting for a challenger</b><small>Send the link to a friend</small></div>`;
     const l = s.lineup;
-    return `<div class="du-side">${avatarHtml(s.profile, 56)}<div class="du-name">${userTag(s.profile, s.name)}</div><div class="du-tot">${l ? fmt(l.total) : '–'}</div><small>${l ? `${label} · ${l.players.filter((p) => p.state !== 'pre').length}/${l.players.length} played` : 'No lineup yet'}</small>
+    return `<div class="du-side">${avatarHtml(s.profile, 56)}<div class="du-name">${nameTag(s)}</div><div class="du-tot">${l ? fmt(l.total) : '–'}</div><small>${l ? `${label} · ${l.players.filter((p) => p.state !== 'pre').length}/${l.players.length} played` : 'No lineup yet'}</small>
       ${l ? `<div class="du-list">${l.players.map((p) => `<div><span>${esc(p.slot.replace(/\d/, ''))}</span>${esc(p.name)}<b>${p.state === 'pre' ? '–' : fmt(p.points)}</b></div>`).join('')}</div>` : ''}</div>`;
   };
   function duelHtml(d) {
@@ -745,7 +751,7 @@
       if (!r.messages.length && !S.room.last) { el.innerHTML = '<p class="rules" id="rmNone">Quiet in here. Start the trash talk.</p>'; return; }
       $('#rmNone')?.remove();
       for (const m of r.messages) {
-        el.insertAdjacentHTML('beforeend', `<div class="rm-msg ${m.mine ? 'mine' : ''}">${avatarHtml(m.profile, 26)}<div><div class="by">${userTag(m.profile, m.name)}<span>${SL.ago(m.at)}</span></div><p>${esc(m.body)}</p></div></div>`);
+        el.insertAdjacentHTML('beforeend', `<div class="rm-msg ${m.mine ? 'mine' : ''}">${avatarHtml(m.profile, 26)}<div><div class="by">${nameTag(m)}<span>${SL.ago(m.at)}</span></div><p>${esc(m.body)}</p></div></div>`);
         S.room.last = Math.max(S.room.last, m.id);
       }
       el.scrollTop = el.scrollHeight;
@@ -769,12 +775,15 @@
       <div class="ar-grid">
         ${tile(live.length ? `#/game/${esc(live[0].id)}` : '#/feed', '📣', 'Call It', 'Guess the next play before the snap: run, short pass, deep shot or TD.', live.length ? `<span class="live">${live.length} live</span> · tap a game` : next ? `Opens at kickoff · ${esc(SL.kickoff(next))}` : 'Opens when games are live', live.length ? 'hot' : '')}
         ${tile('#/daily', '🧩', `Sideline Daily${d?.number ? ` #${d.number}` : ''}`, 'Name the player from a real stat line. 6 tries.', `${dailyStatus}${streak ? ` · 🔥 ${streak}` : ''}`)}
+        ${tile('#/props', '🎯', 'Player props', 'Pick 2 to 5 More or Less. All hit and win up to +600.', '')}
+        ${tile('#/cards', '🃏', 'Moment cards', 'Collect the week\'s biggest plays. Open packs, swap with friends.', '')}
         ${tile('#/takes', '🌶️', 'Hot takes', 'Post a take, get voted W or L, collect receipts.', ch?.takes ? `Your receipts: ${ch.takes.hit}-${ch.takes.miss}` : '')}
         ${tile('#/court', '🦓', 'Ref Court', 'Every flag and review: good call or robbery?', '')}
         ${tile('#/aura', '✨', 'Aura', 'Who\'s got it, and who\'s cooked this week.', '')}
         ${tile('#/duels', '⚔️', 'Duels', 'Your lineup vs. a friend\'s, from one link.', '')}
         ${tile('#/house', '🏠', 'Beat the House', 'The best projected lineup under the cap. Beat it.', '')}
         ${tile('#/wrapped', '🎁', 'Wrapped', 'Your week in one card to post.', '')}
+        ${tile('#/locker', '🔓', 'Locker', 'Level up to unlock card frames, colors and name tags.', '')}
       </div>
       ${ch?.list?.length ? `<section class="ch-sec"><div class="ch-head"><div><div class="label">Week ${ch.week} challenges</div><h2>${ch.list.filter((c) => c.done).length}/${ch.list.length} done${ch.allDone ? ' 🏆' : ''}</h2></div><span class="sub">Finish all ${ch.list.length} for the Week ${ch.week} Grinder badge</span></div>
         ${ch.list.map((c) => `<div class="ch ${c.done ? 'done' : ''}"><span class="ch-e">${c.emoji}</span><span class="ch-l">${esc(c.label)}<i class="ch-bar"><i style="width:${c.progress / c.goal * 100}%"></i></i></span><b>${c.done ? '✓' : `${c.progress}/${c.goal}`}</b></div>`).join('')}
@@ -816,6 +825,8 @@
       <a href="#/ranks" data-close><span>🏆</span>Ranks<small>Top pickers by credits</small></a>
       <a href="#/arcade" data-close><span>🕹️</span>Arcade<small>Call It, Daily, takes, duels…</small></a>
       ${standalone() ? '' : '<button type="button" data-act="install"><span>📲</span>Install the app<small>Home screen + score alerts</small></button>'}
+      <a href="#/locker" data-close><span>🔓</span>Locker<small>Your level, frames, colors and name tags</small></a>
+      <button type="button" data-act="rz-settings"><span>🔴</span>Red zone alerts<small>Get pinged when a game hits the red zone</small></button>
       <button type="button" data-act="customize-open"><span>🎨</span>Customize<small>Look, colors, logos</small></button>
       <a href="https://sidelineff.com/"><span>↗</span>sidelineff.com<small>Rankings, trade analyzer, more</small></a></div>`);
   };
@@ -839,7 +850,7 @@
       if (!key) return false;
       let sub = await reg.pushManager.getSubscription();
       if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key) });
-      await api('/api/push/subscribe', { method: 'POST', body: { sub: sub.toJSON(), players: [...S.myFantasyIds], base: pageBase() } });
+      await api('/api/push/subscribe', { method: 'POST', body: { sub: sub.toJSON(), players: [...S.myFantasyIds], base: pageBase(), prefs: { redzone: ls.get('sl-rz') || 'mine' } } });
       ls.set('sl-push', '1');
       return true;
     } catch { return false; }
@@ -849,6 +860,7 @@
     if (sub) { api('/api/push/unsubscribe', { method: 'POST', body: { endpoint: sub.endpoint } }).catch(() => {}); sub.unsubscribe().catch(() => {}); }
     ls.set('sl-push', null);
   }
+  SL.pushRefresh = () => (ls.get('sl-push') === '1' ? pushSubscribe(true) : Promise.resolve(false));
   SL.hooks.alerts = async (on) => { if (on) { if (await pushSubscribe(false)) toast('Alerts on, even with the screen off.'); } else pushOff(); };
   let idsT;
   SL.hooks.fantasyIds = () => { if (!S.alerts || ls.get('sl-push') !== '1') return; clearTimeout(idsT); idsT = setTimeout(() => pushSubscribe(true), 2000); };

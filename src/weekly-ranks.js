@@ -15,7 +15,10 @@ async function load() {
     const rows = new Map();
     for (const r of body.rows || []) {
       if (!POS.has(r.position) || r.pprEcr == null) continue;
-      rows.set(`${tradeValues.key(r.name)}|${r.position}`, { name: r.name, pos: r.position, team: r.team, rank: Number(r.pprEcr), proj: Number(r.ppr) || 0, injury: r.injury || null });
+      const num = (v) => (v == null || isNaN(Number(v)) ? null : Number(v));
+      rows.set(`${tradeValues.key(r.name)}|${r.position}`, { name: r.name, pos: r.position, team: r.team, rank: Number(r.pprEcr), proj: Number(r.ppr) || 0, injury: r.injury || null,
+        // projected stats, for player props
+        passYds: num(r.passingYards), rushYds: num(r.rushingYards), recYds: num(r.receivingYards), rec: num(r.receptions) });
     }
     if (rows.size < 40) throw new Error(`only ${rows.size} ranked players`);
     Object.assign(state, { rows, season: body.season, week: body.week, updatedAt: body.updatedAt, loadedAt: Date.now(), error: null });

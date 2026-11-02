@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS badges (user_id INTEGER NOT NULL, badge TEXT NOT NULL
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, user_id INTEGER, sub TEXT NOT NULL, players TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
 `);
+try { db.exec('ALTER TABLE push_subs ADD COLUMN prefs TEXT'); } catch { /* already there */ }
 {
   const INT = 'BIGINT', TXT = 'TEXT';
   Object.assign(persist.TABLES, {
@@ -66,7 +67,7 @@ CREATE TABLE IF NOT EXISTS push_subs (endpoint TEXT PRIMARY KEY, user_id INTEGER
     duels: { pk: ['id'], cols: { id: INT, code: TXT, season: INT, week: INT, from_user: INT, to_user: INT, created_at: INT, result: TXT, settled_at: INT } },
     badges: { pk: ['user_id', 'badge'], cols: { user_id: INT, badge: TXT, label: TXT, earned_at: INT } },
     kv: { pk: ['k'], cols: { k: TXT, v: TXT } },
-    push_subs: { pk: ['endpoint'], cols: { endpoint: TXT, user_id: INT, sub: TXT, players: TXT, created_at: INT } },
+    push_subs: { pk: ['endpoint'], cols: { endpoint: TXT, user_id: INT, sub: TXT, players: TXT, created_at: INT, prefs: TXT } },
   });
 }
 
@@ -76,10 +77,17 @@ const kvGet = (k) => { const r = db.prepare('SELECT v FROM kv WHERE k=?').get(k)
 const kvSet = (k, v) => { db.prepare('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v=excluded.v').run(k, JSON.stringify(v)); persist.upsert('kv', { k }); };
 const profileOf = (u) => { try { return u?.profile ? JSON.parse(u.profile) : null; } catch { return null; } };
 const userRow = db.prepare('SELECT id, name, profile, credits FROM users WHERE id=?');
+// extra details other modules add to how a person is shown (e.g. their name tag style)
+const whoExtras = [];
 function who(id) {
   const u = userRow.get(id);
-  return u ? { name: u.name, profile: profileOf(u) } : { name: 'player', profile: null };
+  const out = u ? { name: u.name, profile: profileOf(u) } : { name: 'player', profile: null };
+  for (const f of whoExtras) { try { Object.assign(out, f(id)); } catch { /* ignore */ } }
+  return out;
 }
+// Rewards: packs of moment cards etc. Each reward has a key so it's only given once.
+const earnHandlers = [];
+const earn = (userId, source, key) => { for (const f of earnHandlers) { try { f(userId, source, key); } catch (e) { console.warn('[arcade] earn:', e.message); } } };
 let lbTimer = null;
 function credit(userId, delta) {
   if (!delta) return;
@@ -192,6 +200,7 @@ function gradeCalls(playId, gameId) {
       let delta = win ? (r.choice === 'td' ? 25 : 5) : 0;
       if (win && callStreak(r.user_id).streak % 5 === 0) delta += 25; // every 5 in a row
       if (delta) { db.prepare('UPDATE callit SET credits_delta=? WHERE id=?').run(delta, r.id); credit(r.user_id, delta); }
+      if (win) { const n = db.prepare("SELECT COUNT(*) n FROM callit WHERE user_id=? AND result='win'").get(r.user_id).n; if (n % 3 === 0) earn(r.user_id, 'callit', `callit-${n}`); }
       users.add(r.user_id);
     }
   })();
@@ -358,7 +367,7 @@ function settleTakes() {
     const result = hit + miss < 2 || hit === miss ? 'unsettled' : hit > miss ? 'hit' : 'miss';
     db.prepare('UPDATE takes SET result=?, settled_at=? WHERE id=?').run(result, now, t.id);
     persist.upsert('takes', { id: t.id });
-    if (result === 'hit') checkBadges(t.user_id);
+    if (result === 'hit') { checkBadges(t.user_id); earn(t.user_id, 'take', `take-${t.id}`); }
   }
 }
 
@@ -387,8 +396,8 @@ function settleDuels() {
     }
     db.prepare('UPDATE duels SET result=?, settled_at=? WHERE id=?').run(result, now, d.id);
     persist.upsert('duels', { id: d.id });
-    if (result === 'from') checkBadges(d.from_user);
-    if (result === 'to') checkBadges(d.to_user);
+    if (result === 'from') { checkBadges(d.from_user); earn(d.from_user, 'duel', `duel-${d.id}`); }
+    if (result === 'to') { checkBadges(d.to_user); earn(d.to_user, 'duel', `duel-${d.id}`); }
   }
 }
 
@@ -561,7 +570,7 @@ function challengesFor(userId, week = cur().week) {
     return { id, label: CH[id].label, emoji: CH[id].emoji, goal, progress: Math.min(goal, have), done: have >= goal };
   });
   const allDone = userId && list.length && list.every((c) => c.done);
-  if (allDone) award(userId, `grinder-${cur().season}-${week}`, `Week ${week} Grinder`);
+  if (allDone) { award(userId, `grinder-${cur().season}-${week}`, `Week ${week} Grinder`); for (const i of [1, 2, 3]) earn(userId, 'grinder', `grinder-${cur().season}-${week}-${i}`); }
   return { week, list, allDone: !!allDone };
 }
 function checkBadges(userId) {
@@ -633,7 +642,7 @@ const subs = new Map(); // endpoint -> { sub, players:Set, user_id }
 function loadSubs() {
   subs.clear();
   for (const r of db.prepare('SELECT * FROM push_subs').all()) {
-    try { subs.set(r.endpoint, { sub: JSON.parse(r.sub), players: new Set(String(r.players || '').split(',').filter(Boolean)), user_id: r.user_id }); } catch { /* ignore */ }
+    try { subs.set(r.endpoint, { sub: JSON.parse(r.sub), players: new Set(String(r.players || '').split(',').filter(Boolean)), user_id: r.user_id, prefs: JSON.parse(r.prefs || '{}') }); } catch { /* ignore */ }
   }
 }
 function setupPush() {
@@ -642,6 +651,17 @@ function setupPush() {
   if (!vapid) { vapid = webpush.generateVAPIDKeys(); kvSet('vapid', vapid); }
   webpush.setVapidDetails(process.env.PUSH_CONTACT || 'https://sidelineff.com', vapid.publicKey, vapid.privateKey);
   loadSubs();
+}
+// Send to every subscriber that `make(sub)` returns a message for
+function pushTo(make) {
+  if (!webpush) return;
+  for (const [endpoint, s] of subs) {
+    let msg = null; try { msg = make(s); } catch { msg = null; }
+    if (!msg) continue;
+    webpush.sendNotification(s.sub, JSON.stringify({ ...msg, url: `${s.sub.base || ''}${msg.hash || ''}` }), { TTL: 300, urgency: 'high' }).catch((e) => {
+      if (e.statusCode === 404 || e.statusCode === 410) { subs.delete(endpoint); db.prepare('DELETE FROM push_subs WHERE endpoint=?').run(endpoint); persist.remove('push_subs', { endpoint }); }
+    });
+  }
 }
 const pushed = new Set();
 function pushForPlay(p) {
@@ -726,6 +746,7 @@ function mount(app, deps) {
         .run(req.user.id, day, JSON.stringify(out.rows.map((r) => r.id)), out.solved ? 1 : 0, out.done ? 1 : 0, Date.now());
       persist.upsert('daily_results', { user_id: req.user.id, day });
       if (out.done) checkBadges(req.user.id);
+      if (out.solved) earn(req.user.id, 'daily', `daily-${day}`);
     }
     res.json({ ...out, number: dayNumber(day), stats: req.user ? dailyStats(req.user.id) : null });
   });
@@ -911,10 +932,11 @@ function mount(app, deps) {
     const players = (Array.isArray(req.body.players) ? req.body.players : []).map(String).filter((x) => /^\d+$/.test(x)).slice(0, 200);
     const base = /^https:\/\/[^\s]+$/.test(String(req.body.base || '')) ? String(req.body.base).split('#')[0] : '';
     const rec = { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth }, base };
-    db.prepare(`INSERT INTO push_subs (endpoint, user_id, sub, players, created_at) VALUES (?,?,?,?,?)
-      ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, sub=excluded.sub, players=excluded.players`).run(sub.endpoint, req.user?.id || null, JSON.stringify(rec), players.join(','), Date.now());
+    const prefs = { redzone: ['off', 'mine', 'all'].includes(req.body.prefs?.redzone) ? req.body.prefs.redzone : 'mine' };
+    db.prepare(`INSERT INTO push_subs (endpoint, user_id, sub, players, created_at, prefs) VALUES (?,?,?,?,?,?)
+      ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, sub=excluded.sub, players=excluded.players, prefs=excluded.prefs`).run(sub.endpoint, req.user?.id || null, JSON.stringify(rec), players.join(','), Date.now(), JSON.stringify(prefs));
     persist.upsert('push_subs', { endpoint: sub.endpoint });
-    subs.set(sub.endpoint, { sub: rec, players: new Set(players), user_id: req.user?.id || null });
+    subs.set(sub.endpoint, { sub: rec, players: new Set(players), user_id: req.user?.id || null, prefs });
     res.json({ ok: true, players: players.length });
   });
   app.post('/api/push/unsubscribe', (req, res) => {
@@ -972,4 +994,7 @@ function start() {
   setTimeout(() => { try { house(); puzzleFor(etDay()); } catch { /* later */ } }, 60e3).unref();
 }
 
-module.exports = { mount, start, courtInto, courtEligible, callCategory, opensWindow, auraOf, bestLineup, dailyCheck, etDay, etDayStart, addDays, divOf, weekChallenges, _onPlay: onPlayForCalls, _grade: gradeCalls, _windows: windows };
+// shared with src/arcade-plus.js
+const shared = { credit, who, whoExtras, kvGet, kvSet, cur, weekRange, weekPoints, auraOf, etDay, award, checkBadges,
+  onEarn: (f) => earnHandlers.push(f), pushTo, send: (e, d) => send(e, d), priced: () => pricedSlate() };
+module.exports = { shared, mount, start, courtInto, courtEligible, callCategory, opensWindow, auraOf, bestLineup, dailyCheck, etDay, etDayStart, addDays, divOf, weekChallenges, _onPlay: onPlayForCalls, _grade: gradeCalls, _windows: windows };
