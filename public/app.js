@@ -1492,9 +1492,9 @@
   // ---------- Customize (same options and storage keys as sidelineff.com) ----------
   const ACCENTS = window.SL_ACCENTS || {};
   const LOOKS = [
-    ['editorial', 'Editorial', 'Serif headlines, warm paper tones and roomy rows. Easy on the eyes, like a magazine.', '<span class="cz-prev ed"><span class="h">Every play</span><span class="r"><span>M. Lloyd</span><b>+11.9</b></span><span class="r"><span>J. Love</span><b>+3.0</b></span></span>'],
-    ['classic', 'Classic newspaper', 'The original sports page: condensed headlines, ruled tables and ink on newsprint.', '<span class="cz-prev cl"><span class="h">Every play</span><span class="r"><span>LLOYD</span><b>+11.9</b></span><span class="r"><span>LOVE</span><b>+3.0</b></span></span>'],
-    ['modern', 'Modern', 'Always dark. Bold type and full-width team-color banners for big plays.', '<span class="cz-prev mo"><span class="h">Marshawn Lloyd</span><span class="r"><span>59-yd TD run</span><b>+11.9</b></span></span>'],
+    ['editorial', 'Editorial', 'Serif headlines, warm paper tones and roomy rows. Easy on the eyes, like a magazine.', '<span class="cz-prev ed"><span class="h">sideline</span><span class="r"><span>TD run</span><b>+11.9</b></span><span class="r"><span>Catch</span><b>+3.0</b></span></span>'],
+    ['classic', 'Classic newspaper', 'The original sports page: condensed headlines, ruled tables and ink on newsprint.', '<span class="cz-prev cl"><span class="h">SIDELINE</span><span class="r"><span>TD RUN</span><b>+11.9</b></span><span class="r"><span>CATCH</span><b>+3.0</b></span></span>'],
+    ['modern', 'Modern', 'Always dark. Bold type and full-width team-color banners for big plays.', '<span class="cz-prev mo"><span class="h">sideline</span><span class="r"><span>59-yd TD run</span><b>+11.9</b></span></span>'],
   ];
   const store = (k, v) => { try { localStorage.setItem(k, v); } catch { /* private mode */ } };
   const html = document.documentElement;
