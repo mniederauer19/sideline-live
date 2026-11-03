@@ -160,7 +160,7 @@
       <div class="px-panel">
         <p class="px17-kick">Unlimited · 6 rounds · the '70s to today</p>
         <h2 class="px17-h">Go undefeated</h2>
-        <p class="px17-txt">Every round spins a team and a decade, like the <b>1980s 49ers</b>. Grab any player's best season with them. Your lineup plays all 17 weeks on real season PPR.</p>
+        <p class="px17-txt">Every round spins a team and a decade, like the <b>1980s 49ers</b>. Grab any player's best season with them. Your lineup plays all 17 weeks on era-adjusted PPR points per game, so a 1977 season counts as much as one from today.</p>
         <button type="button" class="px-go big" data-act="s17start" data-mode="decades">▶ Start a season</button>
         <div class="px17-stats"><div><small>Best</small><b>${b ? `${b.wins}-${17 - b.wins}` : '--'}</b></div><div><small>Perfect</small><b>${b ? b.perfect : 0}</b></div><div><small>Seasons</small><b>${b ? b.played : 0}</b></div></div>
       </div>
@@ -170,7 +170,7 @@
           <li><b>Spin.</b> A random team and decade, from the 1970s to today.</li>
           <li><b>Draft.</b> Take one player's best season with that team in that decade: QB, RB, 2 WR, TE or FLEX.</li>
           <li><b>Re-spin.</b> One per round: a new team, or the same team in a new decade.</li>
-          <li><b>Play.</b> Each player scores his real season PPR total, spread over 17 weeks with hot and cold games.</li>
+          <li><b>Play.</b> Each player scores his era-adjusted PPR points per game, with hot and cold weeks, and misses the games he missed that year.</li>
           <li><b>17-0</b> wins the Perfect 17-0 badge and a card pack.</li>
         </ol>
       </div>`);
@@ -203,13 +203,14 @@
     return `<div class="px17-line">${SLOTS.map((s) => {
       const p = run.picks.find((x) => x.slot === s);
       const isNew = fresh && p && order[order.length - 1] === s;
-      return `<div class="px17-slot ${p ? 'full' : ''} ${isNew ? 'pop' : ''}"><small>${LABEL[s]}</small>${p ? `<b>${esc(p.name)}</b><span>${tlogo(p.team)}'${String(p.year).slice(2)} · ${fmt(p.ppr, 0)}</span>` : '<b class="open">open</b>'}</div>`;
+      return `<div class="px17-slot ${p ? 'full' : ''} ${isNew ? 'pop' : ''}"><small>${LABEL[s]}</small>${p ? `<b>${esc(p.name)}</b><span>${tlogo(p.team)}'${String(p.year).slice(2)} · ${fmt(p.adj, 1)}/g</span>` : '<b class="open">open</b>'}</div>`;
     }).join('')}</div>`;
   }
   // Team power: your lineup's points per week so far, against the average opponent
   function power(run) {
     const opp = run.opp || 93;
-    const per = run.picks.reduce((a, p) => a + (p.ppr || 0), 0) / 17;
+    // each pick's adjusted points per game, times the share of games he played
+    const per = run.picks.reduce((a, p) => a + (p.adj || 0) * Math.min(1, (p.g || 0) / (p.games || 17)), 0);
     const max = Math.max(opp * 1.6, per * 1.1);
     const left = SLOTS.length - run.picks.length;
     const tier = left ? `${left} pick${left === 1 ? '' : 's'} to go` : per > opp * 1.25 ? '17-0 threat' : per > opp * 1.1 ? 'Contender' : per > opp ? 'Playoff team' : 'Underdog';
@@ -225,10 +226,10 @@
         const where = taken ? [] : slotsFor(run, p.pos);
         return `<div class="px17-p ${where.length ? '' : 'no'}" style="--d:${Math.min(i, 10) * 45}ms"><span class="pos ${p.pos}">${p.pos}</span>
           <div class="pi"><b>${esc(p.name)}</b><small>${sp.decade ? `<em>${p.year}</em> · ` : ''}${p.g} of ${p.games || ro.games} games · ${esc(statLine(p))}</small></div>
-          <div class="pts"><b>${fmt(p.ppr, 0)}</b><small>PPR</small></div>
+          <div class="pts"><b>${fmt(p.adj, 1)}</b><small>ADJ PPG</small></div>
           <div class="go">${taken ? '<small>On your team</small>' : where.length ? where.map((s, j) => `<button type="button" class="px-go small ${j ? 'teal' : ''}" data-act="s17pick" data-id="${esc(p.id)}" data-slot="${s}">${j ? LABEL[s] : `Draft · ${LABEL[s]}`}</button>`).join('') : '<small>No open spot</small>'}</div></div>`;
       }).join('')}
-      <p class="px17-foot">PPR is his real fantasy total for that whole season (1 per catch). Missed games are already in it.</p>`;
+      <p class="px17-foot">Adj PPG: his PPR points per game that season, compared with the average starter at his position that year and put on today's scale. He sits out the games he missed that year.</p>`;
   }
   function draw(animate) {
     const run = S.s17.run;
