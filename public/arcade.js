@@ -277,12 +277,6 @@
   function saveCanvas(canvas, filename) {
     canvas.toBlob((b) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = filename || 'sideline.png'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500); }, 'image/png');
   }
-  SL.card = { W, H, frame, circleImg, pill, wrap, loadImg, fontsReady, initialsOf, css, saveCanvas, suggestFor: (p) => suggest(p),
-    shareFile: async (file, { text, url } = {}) => {
-      if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], text: [text, url].filter(Boolean).join(' ') }); return true; } catch (e) { if (e.name === 'AbortError') return true; } }
-      const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
-      return false;
-    } };
   async function copy(text) { try { await navigator.clipboard.writeText(text); toast('Link copied.'); } catch { prompt('Copy this link', text); } }
   // Who a play hurts or helps on your synced teams
   function oppIds() {
@@ -311,7 +305,7 @@
         <span class="fmt-seg sh-style" role="radiogroup" aria-label="Card style"><button type="button" data-st="hype" class="${st.style === 'hype' ? 'on' : ''}">Hype</button><button type="button" data-st="badbeat" class="${st.style === 'badbeat' ? 'on' : ''}">Bad beat 💀</button></span>
         <label class="label" for="shCap">Caption on the card</label>
         <input id="shCap" maxlength="44" placeholder="${st.style === 'badbeat' ? 'lost my matchup by 0.3 on this 💀' : 'say something (optional)'}" value="${esc(st.caption)}">
-        <div class="share-btns"><button class="btn" type="button" id="shGo">Share</button><button class="btn ghost" type="button" id="shSave">Save image</button><button class="btn ghost" type="button" id="shLink">Copy link</button>${SL.hooks.shareExtra ? SL.hooks.shareExtra(p) : ''}</div>
+        <div class="share-btns"><button class="btn" type="button" id="shGo">Share</button><button class="btn ghost" type="button" id="shSave">Save image</button><button class="btn ghost" type="button" id="shLink">Copy link</button></div>
         <p class="rules">Sized for TikTok, Instagram and Snapchat stories (9:16).</p>
       </div></div>`);
     let canvas = null, tok = 0;
@@ -815,7 +809,7 @@
       if (!key) return false;
       let sub = await reg.pushManager.getSubscription();
       if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key) });
-      await api('/api/push/subscribe', { method: 'POST', body: { sub: sub.toJSON(), players: [...S.myFantasyIds], base: pageBase(), prefs: { redzone: ls.get('sl-rz') || 'mine', delay: Number(ls.get('sl-delay')) || 0 } } });
+      await api('/api/push/subscribe', { method: 'POST', body: { sub: sub.toJSON(), players: [...S.myFantasyIds], base: pageBase(), prefs: { redzone: ls.get('sl-rz') || 'mine' } } });
       ls.set('sl-push', '1');
       return true;
     } catch { return false; }

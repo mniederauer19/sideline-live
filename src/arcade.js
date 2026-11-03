@@ -628,17 +628,15 @@ function setupPush() {
   webpush.setVapidDetails(process.env.PUSH_CONTACT || 'https://sidelineff.com', vapid.publicKey, vapid.privateKey);
   loadSubs();
 }
-// With the spoiler shield on, a subscriber's alerts wait as long as their TV is behind
-const later = (s, fn) => { const d = Number(s.prefs?.delay) || 0; if (d > 0) setTimeout(fn, d * 1000).unref?.(); else fn(); };
 // Send to every subscriber that `make(sub)` returns a message for
 function pushTo(make) {
   if (!webpush) return;
   for (const [endpoint, s] of subs) {
     let msg = null; try { msg = make(s); } catch { msg = null; }
     if (!msg) continue;
-    later(s, () => webpush.sendNotification(s.sub, JSON.stringify({ ...msg, url: `${s.sub.base || ''}${msg.hash || ''}` }), { TTL: 300, urgency: 'high' }).catch((e) => {
+    webpush.sendNotification(s.sub, JSON.stringify({ ...msg, url: `${s.sub.base || ''}${msg.hash || ''}` }), { TTL: 300, urgency: 'high' }).catch((e) => {
       if (e.statusCode === 404 || e.statusCode === 410) { subs.delete(endpoint); db.prepare('DELETE FROM push_subs WHERE endpoint=?').run(endpoint); persist.remove('push_subs', { endpoint }); }
-    }));
+    });
   }
 }
 const pushed = new Set();
@@ -653,9 +651,9 @@ function pushForPlay(p) {
     if (!(p.td || v >= 4 || v <= -2)) continue;
     const title = `${p.td ? '🔥 ' : v < 0 ? '💀 ' : ''}${x.name} ${v > 0 ? '+' : ''}${v.toFixed(1)} PPR`;
     const payload = JSON.stringify({ title, body: p.headline, tag: p.id, url: `${s.sub.base || ''}#/play/${encodeURIComponent(p.id)}` });
-    later(s, () => webpush.sendNotification(s.sub, payload, { TTL: 600, urgency: 'high' }).catch((e) => {
+    webpush.sendNotification(s.sub, payload, { TTL: 600, urgency: 'high' }).catch((e) => {
       if (e.statusCode === 404 || e.statusCode === 410) { subs.delete(endpoint); db.prepare('DELETE FROM push_subs WHERE endpoint=?').run(endpoint); persist.remove('push_subs', { endpoint }); }
-    }));
+    });
   }
 }
 
@@ -882,7 +880,7 @@ function mount(app, deps) {
     const players = (Array.isArray(req.body.players) ? req.body.players : []).map(String).filter((x) => /^\d+$/.test(x)).slice(0, 200);
     const base = /^https:\/\/[^\s]+$/.test(String(req.body.base || '')) ? String(req.body.base).split('#')[0] : '';
     const rec = { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth }, base };
-    const prefs = { redzone: ['off', 'mine', 'all'].includes(req.body.prefs?.redzone) ? req.body.prefs.redzone : 'mine', delay: Math.max(0, Math.min(120, Number(req.body.prefs?.delay) || 0)) };
+    const prefs = { redzone: ['off', 'mine', 'all'].includes(req.body.prefs?.redzone) ? req.body.prefs.redzone : 'mine' };
     db.prepare(`INSERT INTO push_subs (endpoint, user_id, sub, players, created_at, prefs) VALUES (?,?,?,?,?,?)
       ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, sub=excluded.sub, players=excluded.players, prefs=excluded.prefs`).run(sub.endpoint, req.user?.id || null, JSON.stringify(rec), players.join(','), Date.now(), JSON.stringify(prefs));
     persist.upsert('push_subs', { endpoint: sub.endpoint });

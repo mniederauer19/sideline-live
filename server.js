@@ -579,7 +579,7 @@ app.get('/api/lineups', (req, res) => {
 // ---------- the Arcade: Call It, Daily, rooms, takes, duels, aura, wrapped, alerts (src/arcade.js) ----------
 arcade.mount(app, { needUser, pricedSlate, send: (event, data) => send(event, data) });
 arcadePlus.mount(app, { needUser }); // props, moment cards, red zone alerts, the locker
-arcadeFun.mount(app, { send: (event, data) => send(event, data) }); // hype meter, spoiler shield
+arcadeFun.mount(app, { send: (event, data) => send(event, data) }); // hype meter
 
 // ---------- live push (Server-Sent Events) ----------
 const clients = new Set();

@@ -1,8 +1,5 @@
-// Hype meter + spoiler shield support.
-//   Hype   every game has a 0-100 meter that jumps on big plays, reactions and comments and
-//          cools off over time (it halves every 90 seconds). The loudest game is marked.
-//   Shield /api/scores-at says what each game's score was a given number of seconds ago,
-//          so people whose TV stream runs behind don't get spoiled when they open the site.
+// Hype meter: every live game has a 0-100 meter that jumps on big plays, reactions and comments
+// and cools off over time (it halves every 90 seconds). The loudest game is marked.
 const db = require('./db');
 const engine = require('./engine');
 
@@ -52,22 +49,6 @@ function mount(app, { send }) {
   }, 3000).unref();
 
   app.get('/api/hype', (_req, res) => res.json(board()));
-
-  // What each game looked like `ago` seconds ago (for the spoiler shield)
-  const lastPlayBefore = db.prepare('SELECT data FROM plays WHERE game_id=? AND ts<=? ORDER BY ts DESC, seq DESC LIMIT 1');
-  app.get('/api/scores-at', (req, res) => {
-    const ago = Math.max(0, Math.min(180, Number(req.query.ago) || 0)) * 1000;
-    const t = Date.now() - ago;
-    const out = {};
-    for (const g of engine.listGames()) {
-      if (g.state === 'pre') continue;
-      const row = lastPlayBefore.get(g.id, t);
-      if (!row) { out[g.id] = { away: 0, home: 0, before: true }; continue; }
-      const p = JSON.parse(row.data);
-      out[g.id] = { away: p.awayScore, home: p.homeScore, period: p.period, clock: p.clock, ts: p.ts };
-    }
-    res.json({ at: t, games: out });
-  });
 }
 
 module.exports = { mount, playWeight, _bump: bump, _board: board };
