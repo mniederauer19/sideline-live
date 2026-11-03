@@ -1,5 +1,5 @@
 /* sideline live: the Arcade (Call It, Daily, rooms, takes, duels, aura, wrapped, share cards)
-   and the phone layout (swipe feed, bottom tabs). Same colors and type as the rest of the site. */
+   and the phone layout (bottom tabs). Same colors and type as the rest of the site. */
 
 /* ---------- share button on play cards ---------- */
 .share-btn { display: inline-flex; align-items: center; gap: 6px; background: none; border: 0; color: var(--muted); font: var(--label-w2) 11px/1 var(--label-font); letter-spacing: 1.4px; text-transform: uppercase; padding: 6px 2px; }
@@ -50,22 +50,9 @@
 .sh-style { align-self: flex-start; }
 @media (max-width: 520px) { .share-wrap { grid-template-columns: 1fr; } .share-prev { width: 62%; margin: 0 auto; } }
 
-/* ---------- feed layout switch + swipe mode ---------- */
+/* ---------- feed controls row ---------- */
 .feed-modes { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; flex-wrap: wrap; }
 .just-mine { margin-left: auto; }
-html.snap-feed { scroll-snap-type: y proximity; scroll-padding-top: 70px; }
-.feed.swipe .play { scroll-snap-align: start; min-height: calc(100svh - 150px); align-content: center; padding: 26px 0 30px; grid-template-columns: 1fr; gap: 14px; }
-.feed.swipe .play .ppr { flex-direction: row; align-items: baseline; gap: 10px; padding: 0; margin: 0; background: none; }
-.feed.swipe .play .ppr .v { font-size: 104px; }
-.feed.swipe .play .ppr.boom .v { color: var(--gold); font-size: 112px; }
-.feed.swipe .play .ppr.boom .u { color: var(--muted); }
-.feed.swipe .play .ppr .u { font-size: 13px; }
-.feed.swipe .play .pname { font-size: 40px; }
-.feed.swipe .play .headline { font-size: 21px; }
-.feed.swipe .play .who-row .face, .feed.swipe .play .who-row .initials { width: 76px; height: 76px; }
-.feed.swipe .play .breakdown, .feed.swipe .play .also { font-size: 14px; }
-.feed.swipe .play .share-btn { color: var(--gold); border: 1px solid var(--gold); border-radius: 99px; padding: 7px 12px; }
-.feed.swipe .more { scroll-snap-align: start; }
 
 /* ---------- Arcade hub ---------- */
 .ar-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; margin-bottom: 26px; }
@@ -272,9 +259,6 @@ html.snap-feed { scroll-snap-type: y proximity; scroll-padding-top: 70px; }
   .du-tot { font-size: 34px; }
   .du-list { font-size: 12px; }
   .wr-big { font-size: 88px; }
-  .feed.swipe .play { min-height: calc(100svh - 54px - 70px - 20px); }
-  .feed.swipe .play .ppr .v { font-size: 96px; }
-  .feed.swipe .play .pname { font-size: 34px; }
   .just-mine { margin-left: 0; }
   .ci-opt { font-size: 11.5px; padding: 8px 2px 7px; }
 }
@@ -495,7 +479,6 @@ button.fs-c:hover { border-color: var(--gold); }
 .mb-c small { font-size: 10.5px; color: var(--live); }
 .mb-c.up { border-color: color-mix(in srgb, var(--pos) 60%, var(--line)); } .mb-c.up b { color: var(--pos); }
 .mb-c.down { border-color: color-mix(in srgb, var(--neg) 55%, var(--line)); }
-.feed-modes .fmt-seg:not(.mode-seg) { margin-left: 0; }
 .feed-credit { margin-top: 18px; text-align: center; font-size: 12px; color: var(--dim); }
 @media (max-width: 720px) {
   html[data-look] .page-head.feed-head { padding: 12px 0 10px; margin-bottom: 10px; }

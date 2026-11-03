@@ -16,7 +16,7 @@
     games: [],
     gamesById: new Map(),
     week: null,
-    feed: { plays: [], next: null, filter: 'all', game: null, loading: false, mode: (() => { try { return localStorage.getItem('sl-feed-mode'); } catch { return null; } })() || (window.matchMedia('(max-width: 720px)').matches ? 'swipe' : 'list') },
+    feed: { plays: [], next: null, filter: 'all', game: null, loading: false },
     pending: [],
     pickerFor: null,
     myLineupIds: new Set(),
@@ -690,19 +690,9 @@
     const sw = S.schedule.find((x) => x.week === w);
     return `${sw?.label || `Week ${w}`} · ${S.week?.season || ''}`;
   };
-  // Swipe mode: one big play per screen. While games are live the newest is first; otherwise the most exciting.
-  const swipeOn = () => S.feed.mode === 'swipe' && !S.feed.game;
-  function excite(p) {
-    const pr = primaryOf(p), s = p.social || {};
-    const r = Object.values(s.reactions || {}).reduce((a, b) => a + b, 0);
-    return Math.abs(pr ? adj(pr) : 0) + (p.td ? 12 : 0) + (p.explosive ? 6 : 0) + (p.kind === 'int' || p.turnover ? 8 : 0) + r * 2 + (s.score || 0) + (s.comments || 0) * 2 + (isMine(p) ? 10 : 0);
-  }
   function renderFeedList() {
     const el = $('#feedList');
     if (!el) return;
-    const swipe = swipeOn();
-    el.classList.toggle('swipe', swipe);
-    document.documentElement.classList.toggle('snap-feed', swipe);
     let html = '';
     if (S.pending.length) html += `<button class="new-plays" data-act="show-new">${S.pending.length} new play${S.pending.length > 1 ? 's' : ''}</button>`;
     if (!S.feed.plays.length) {
@@ -718,13 +708,8 @@
         })();
       html += `<div class="empty">${msg}</div>`;
     } else {
-      let list = S.feed.plays;
-      if (swipe) {
-        list = list.filter((p) => p.players?.length || !['kickoff', 'punt', 'penalty', 'other'].includes(p.kind));
-        if (!(isCurrentWeek() && S.games.some((g) => g.state === 'in'))) list = list.slice().sort((a, b) => excite(b) - excite(a));
-      }
-      html += list.map((p) => playCard(p)).join('');
-      if (S.feed.next) html += `<button class="more" data-act="more">${swipe ? 'Load more plays' : 'Load earlier plays'}</button>`;
+      html += S.feed.plays.map((p) => playCard(p)).join('');
+      if (S.feed.next) html += `<button class="more" data-act="more">Load earlier plays</button>`;
     }
     el.innerHTML = html;
   }
@@ -791,8 +776,7 @@
   function showFeed() {
     S.feed.game = null;
     const h = feedHead();
-    const modeSeg = `<div class="feed-modes"><span class="fmt-seg mode-seg" role="radiogroup" aria-label="Layout"><button type="button" class="${S.feed.mode !== 'swipe' ? 'on' : ''}" data-act="feedmode" data-v="list">List</button><button type="button" class="${S.feed.mode === 'swipe' ? 'on' : ''}" data-act="feedmode" data-v="swipe">Swipe</button></span>
-      ${fmtSeg()}
+    const modeSeg = `<div class="feed-modes">${fmtSeg()}
       <button type="button" class="pill just-mine ${S.feed.filter === 'team' ? 'on' : ''}" data-act="justmine" title="Only plays from players on your synced teams">Just my players</button></div>`;
     view.innerHTML = `<div class="page-head feed-head"><div><div class="label" id="ftLabel">${h.label}</div><h1 id="ftTitle">${h.title}</h1></div></div>
       <div id="fsStrip">${statsStrip()}</div><div id="myBar">${myBar()}</div>
@@ -1471,7 +1455,6 @@
         case 'join': e.preventDefault(); requireUser(); break;
         case 'filter': S.feed.filter = t.dataset.f; document.querySelectorAll('[data-act="filter"]').forEach((b) => { b.classList.toggle('on', b === t); b.setAttribute('aria-selected', b === t); }); if (S.feed.filter === 'mine') await loadMyLineupIds(); loadFeed(); break;
         case 'more': loadFeed(true); break;
-        case 'feedmode': S.feed.mode = t.dataset.v; ls.set('sl-feed-mode', S.feed.mode); document.querySelectorAll('[data-act="feedmode"]').forEach((b) => b.classList.toggle('on', b === t)); swap(renderFeedList); break;
         case 'justmine': S.feed.filter = S.feed.filter === 'team' ? 'all' : 'team'; t.classList.toggle('on', S.feed.filter === 'team'); document.querySelectorAll('[data-act="filter"]').forEach((b) => b.classList.toggle('on', b.dataset.f === S.feed.filter)); loadFeed(); break;
         case 'show-new': S.feed.plays = S.pending.concat(S.feed.plays); S.pending = []; renderFeedList(); window.scrollTo({ top: 0 }); break;
         case 'gtab': gameTab = t.dataset.t; markEnter(); showGame(S.feed.game); break;
@@ -1495,7 +1478,7 @@
         case 'player': e.preventDefault(); openPlayer(t.dataset.pid); break;
         case 'fmt': {
           S.fmt = t.dataset.v; ls.set('sl-scoring', S.fmt); ls.set('sl-scoring-set', '1');
-          document.querySelectorAll('.fmt-seg:not(.mode-seg) button').forEach((b) => { b.classList.toggle('on', b.dataset.v === S.fmt); b.setAttribute('aria-checked', b.dataset.v === S.fmt); });
+          document.querySelectorAll('.fmt-seg button').forEach((b) => { b.classList.toggle('on', b.dataset.v === S.fmt); b.setAttribute('aria-checked', b.dataset.v === S.fmt); });
           swap(() => { if ($('#feedList')) renderFeedList(); if ($('#plList')) drawPlayers(); if (currentRoute() === 'team') drawTeam(); renderLive(); });
           break;
         }
@@ -1692,7 +1675,7 @@
       if (currentRoute() === 'team' && S.tm.data?.game?.id === p.gameId && Date.now() - (S.tm.at || 0) > 5000) { S.tm.at = Date.now(); loadTeam(); }
       if (!$('#feedList') || !matchesFeed(p)) return;
       if (S.feed.plays.some((x) => x.id === p.id)) return;
-      if (window.scrollY < 300 && !S.pending.length && !(swipeOn() && !S.games.some((g) => g.state === 'in'))) {
+      if (window.scrollY < 300 && !S.pending.length) {
         S.feed.plays.unshift(p);
         const list = $('#feedList');
         const empty = list.querySelector('.empty');
@@ -1746,7 +1729,6 @@
     const navFor = window.SL?.navFor?.[r];
     document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('on', a.dataset.nav === (navFor || r) || (r === 'game' && a.dataset.nav === 'feed') || (r === 'team' && a.dataset.nav === 'players')));
     S.pickerFor = null;
-    document.documentElement.classList.remove('snap-feed');
     document.documentElement.classList.toggle('on-game', r === 'game');
     markEnter();
     renderStrip();
@@ -1774,6 +1756,7 @@
     currentRoute, kick, kickoff, ago, loadLeagues, lgMine, lgLineup, lgPid, lgWeek, weekLabel, isCurrentWeek, onMainSite, mainGet,
     openComments, openPlayer, renderFeedList, renderLive, loadMe, renderMe, renderSide, refreshGames, glideSoon, ls, calm, API,
   });
+  ls.set('sl-feed-mode', null); // the Swipe layout was taken out
   window.SL.routes ||= {}; window.SL.acts ||= {}; window.SL.hooks ||= {};
   window.SL.ready?.();
 
