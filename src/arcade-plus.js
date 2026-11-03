@@ -246,6 +246,7 @@ function xpOf(userId) {
     cards: n('SELECT COUNT(*) n FROM cards WHERE user_id=?', userId) * 4,
     comments: n('SELECT COUNT(*) n FROM comments WHERE user_id=?', userId) * 3,
     lineups: n('SELECT COUNT(*) n FROM lineups WHERE user_id=?', userId) * 20,
+    s17: n('SELECT COUNT(*) n FROM s17_runs WHERE user_id=? AND finished_at IS NOT NULL', userId) * 8 + n('SELECT COUNT(*) n FROM s17_runs WHERE user_id=? AND wins=17', userId) * 150,
   };
   return { xp: Object.values(parts).reduce((a, b) => a + b, 0), parts };
 }
@@ -372,6 +373,7 @@ function mount(app, { needUser, tier, record, rankOf }) {
       badges: db.prepare('SELECT badge, label, earned_at FROM badges WHERE user_id=? ORDER BY earned_at DESC').all(id),
       level: l.level, xp: l.xp, cardCount: cards.length, showcase: cards.slice(0, 3), lineup,
       friend: friendStatus(req.user?.id, id), friends: friendIds(id).length,
+      s17: (() => { const r = require('./seventeen').statsFor(id); return r?.n ? { best: r.best, perfect: r.perfect || 0, played: r.n } : null; })(),
     });
   });
 

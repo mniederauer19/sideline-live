@@ -12,6 +12,7 @@ const persist = require('./src/persist');
 const arcade = require('./src/arcade');
 const arcadePlus = require('./src/arcade-plus');
 const arcadeFun = require('./src/arcade-fun');
+const seventeen = require('./src/seventeen');
 const { isOffensive } = require('./src/moderation');
 
 const app = express();
@@ -609,6 +610,7 @@ app.get('/api/lineups', (req, res) => {
 arcade.mount(app, { needUser, pricedSlate, send: (event, data) => send(event, data) });
 arcadePlus.mount(app, { needUser, tier, record, rankOf }); // props, moment cards, red zone alerts, the locker, profiles
 arcadeFun.mount(app, { send: (event, data) => send(event, data) }); // hype meter
+seventeen.mount(app, { A: arcade.shared }); // the 17-0 game
 
 // ---------- live push (Server-Sent Events) ----------
 const clients = new Set();

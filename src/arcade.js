@@ -947,5 +947,5 @@ function start() {
 
 // shared with src/arcade-plus.js
 const shared = { credit, who, whoExtras, kvGet, kvSet, cur, weekRange, weekPoints, auraOf, etDay, award, checkBadges,
-  onEarn: (f) => earnHandlers.push(f), pushTo, send: (e, d) => send(e, d), priced: () => pricedSlate() };
+  onEarn: (f) => earnHandlers.push(f), earn, pushTo, send: (e, d) => send(e, d), priced: () => pricedSlate() };
 module.exports = { shared, mount, start, callCategory, opensWindow, auraOf, bestLineup, dailyCheck, etDay, etDayStart, addDays, divOf, weekChallenges, _onPlay: onPlayForCalls, _grade: gradeCalls, _windows: windows };
