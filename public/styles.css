@@ -1087,3 +1087,19 @@ html[data-look="modern"] .nav > .glide { width: 26px; height: 13px; bottom: -7px
 .slot .initials { font-size: 13px; }
 
 .pill .pk-n { margin-left: 6px; opacity: .7; letter-spacing: .5px; }
+
+/* ---------- even layout: equal side columns, matching cards, tops lined up ---------- */
+@media (min-width: 900px) {
+  .rail, .side { padding-top: 24px; }
+  .shell > .main > .view > :first-child { margin-top: 0; }
+  .shell > .main { padding-top: 24px; }
+}
+@media (min-width: 1360px) {
+  .shell { grid-template-columns: 280px minmax(0, 1fr) 280px; gap: 40px; }
+}
+.sb, .side section { padding: 18px; border-radius: var(--r-card); }
+.side .sb-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+.side .sb-head span:last-child, .sb-head span:last-child { white-space: nowrap; }
+/* The page title block: when the note wraps under the title it stays on the right edge instead of floating mid-column */
+.page-head .aside { margin-left: auto; }
+@media (min-width: 900px) { .page-head { padding-top: 0; } .page-head .label { margin-top: 2px; } }

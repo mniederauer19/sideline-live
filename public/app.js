@@ -1290,7 +1290,7 @@
     let html = '';
     if (leaders) {
       const top = leaders.players[0]?.ppr || 1;
-      html += `<section><span class="label">${esc(weekLabel())}${isCurrentWeek() ? ' so far' : ''} · Top scorers</span>${leaders.players.slice(0, 10).map((p, i) => `<div class="mini lead ${S.myLineupIds.has(String(p.id)) ? 'mine' : ''} ${i === 0 ? 'first' : ''}">${face(p, 'face sm')}<span class="who">${esc(p.name)}<small>${esc(p.pos)} · ${esc(p.team)}</small><i class="lead-bar"><i style="width:${Math.max(4, Math.round(p.ppr / top * 100))}%"></i></i></span><span class="v amber">${fmt(p.ppr)}</span></div>`).join('')
+      html += `<section><div class="label sb-head"><span>Top scorers</span><span>${isCurrentWeek() ? 'So far' : esc(weekLabel())}</span></div>${leaders.players.slice(0, 10).map((p, i) => `<div class="mini lead ${S.myLineupIds.has(String(p.id)) ? 'mine' : ''} ${i === 0 ? 'first' : ''}">${face(p, 'face sm')}<span class="who">${esc(p.name)}<small>${esc(p.pos)} · ${esc(p.team)}</small><i class="lead-bar"><i style="width:${Math.max(4, Math.round(p.ppr / top * 100))}%"></i></i></span><span class="v amber">${fmt(p.ppr)}</span></div>`).join('')
         || '<p>Top scorers show up once games kick off.</p>'}<a class="foot" href="#/players">All players →</a></section>`;
     }
     // Lineups started this season with the current week: past weeks have none to show
