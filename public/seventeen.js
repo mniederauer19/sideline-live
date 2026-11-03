@@ -36,8 +36,9 @@
     const CROWD = ['#d9555a', '#f4c44e', '#4fc1b0', '#e9ecff', '#7d86d6', '#ff9a4a', '#9fbf8a', '#c86bd8'];
     function build() {
       const wpx = cv.parentElement.clientWidth || 390, hpx = cv.parentElement.clientHeight || 700;
-      H = Math.max(180, Math.min(1400, Math.round(W * hpx / wpx)));
-      cv.width = W; cv.height = H;
+      // tall enough for long pages from the start, and it only ever grows, so the scene never jumps
+      H = Math.max(H, 180, Math.min(1600, Math.round(W * Math.max(hpx, innerHeight * 2) / wpx)));
+      cv.width = W * 2; cv.height = H * 2; // drawn at 2x so motion can move in half pixels
       base = document.createElement('canvas'); base.width = W; base.height = H;
       const b = base.getContext('2d'); seed = 7;
       const px = (x, y, w, h, c) => { b.fillStyle = c; b.fillRect(x, y, w, h); };
@@ -83,29 +84,46 @@
         crowd.push({ x, y, c: CROWD[Math.floor(rnd() * CROWD.length)], j: rnd() });
       }
     }
-    function frame(tick) {
-      g.drawImage(base, 0, 0);
-      for (const s of stars) { const on = Math.sin(tick * 0.3 + s.t * 20) > -0.4; g.fillStyle = on ? (s.t > 0.8 ? '#e9ecff' : '#8e95c4') : '#2f356c'; g.fillRect(s.x, s.y, 1, 1); }
+    // One frame, timed in seconds so it runs at the screen's own refresh rate
+    function frame(t) {
+      g.setTransform(1, 0, 0, 1, 0, 0); g.imageSmoothingEnabled = false;
+      g.drawImage(base, 0, 0, W * 2, H * 2);
+      g.setTransform(2, 0, 0, 2, 0, 0);
+      for (const s of stars) { const v = 0.5 + 0.5 * Math.sin(t * 1.6 + s.t * 40); g.globalAlpha = 0.25 + 0.75 * v; g.fillStyle = s.t > 0.8 ? '#e9ecff' : '#8e95c4'; g.fillRect(s.x, s.y, 1, 1); }
+      g.globalAlpha = 1;
       for (const p of crowd) {
-        const jump = excite > 0 && p.j < excite * 0.85 && ((tick + Math.floor(p.j * 10)) % 2 === 0);
-        g.fillStyle = p.c; g.fillRect(p.x, p.y - (jump ? 2 : 0), 2, 2);
-        if (excite > 0.3 && p.j < excite * 0.3) { g.fillStyle = '#ffffff'; g.fillRect(p.x, p.y - (jump ? 3 : 1), 1, 1); }
+        // the crowd bobs on a sine wave, harder the more excited they are
+        const amp = p.j < 0.12 ? 0.5 : 0; const hype = p.j < excite * 0.9 ? excite * 2.6 : 0;
+        const lift = Math.max(0, Math.sin(t * (hype ? 13 : 2) + p.j * 37)) * (hype || amp);
+        g.fillStyle = p.c; g.fillRect(p.x, Math.round((p.y - lift) * 2) / 2, 2, 2);
+        if (hype && p.j < excite * 0.3) { g.fillStyle = '#ffffff'; g.fillRect(p.x, Math.round((p.y - lift - 1) * 2) / 2, 1, 1); }
       }
-      for (const k of sparks) { g.fillStyle = k.c; g.fillRect(Math.round(k.x), Math.round(k.y), 2, 2); }
-      if (flash > 0) { g.fillStyle = `rgba(${flashC},${(flash * 0.35).toFixed(2)})`; g.fillRect(0, 0, W, H); }
+      for (const k of sparks) { g.globalAlpha = Math.min(1, k.life / 0.5); g.fillStyle = k.c; g.fillRect(Math.round(k.x * 2) / 2, Math.round(k.y * 2) / 2, 1.5, 1.5); }
+      g.globalAlpha = 1;
+      if (flash > 0.01) { g.fillStyle = `rgba(${flashC},${(flash * 0.35).toFixed(3)})`; g.fillRect(0, 0, W, H); }
     }
-    let tick = 0, timer = null;
-    function loop() {
-      if (!cv.isConnected) { clearInterval(timer); return; }
-      tick++;
-      excite = Math.max(0, excite - 0.06); flash = Math.max(0, flash - 0.25);
-      sparks = sparks.filter((k) => (k.life -= 1) > 0); for (const k of sparks) { k.x += k.vx; k.y += k.vy; k.vy += 0.12; }
-      frame(tick);
+    let last = 0, raf = 0, still = 0;
+    function loop(now) {
+      if (!cv.isConnected) return;
+      raf = requestAnimationFrame(loop);
+      const dt = Math.min(0.05, (now - (last || now)) / 1000); last = now;
+      excite = Math.max(0, excite - dt * 0.55); flash = Math.max(0, flash - dt * 2.6);
+      for (const k of sparks) { k.x += k.vx * dt * 60; k.y += k.vy * dt * 60; k.vy += 0.07 * dt * 60; k.vx *= 0.985; k.life -= dt; }
+      sparks = sparks.filter((k) => k.life > 0);
+      // when nothing is happening, the stars and crowd idle at 30 frames a second to save battery
+      if (!excite && !flash && !sparks.length && (still = (still + 1) % 2)) return;
+      frame(now / 1000);
     }
     build(); frame(0);
-    if (!calm.matches) timer = setInterval(loop, 110);
+    if (!calm.matches) raf = requestAnimationFrame(loop);
     let rt = null;
-    const ro = new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(() => { if (cv.isConnected) { build(); frame(tick); } else ro.disconnect(); }, 120); });
+    let lastW = cv.parentElement.clientWidth;
+    const ro = new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(() => {
+      if (!cv.isConnected) { ro.disconnect(); cancelAnimationFrame(raf); return; }
+      const wpx = cv.parentElement.clientWidth, need = Math.round(W * cv.parentElement.clientHeight / wpx);
+      if (wpx !== lastW) { lastW = wpx; H = 180; } else if (need <= H) return; // only redraw for a new width or a taller page
+      build(); frame(performance.now() / 1000);
+    }, 120); });
     ro.observe(cv.parentElement);
     return {
       cheer(level = 1) { excite = Math.min(1, Math.max(excite, level)); },
@@ -113,7 +131,7 @@
       fireworks(n = 6) {
         if (calm.matches) return;
         const burst = () => { const x = 40 + Math.random() * 240, y = 10 + Math.random() * 40, c = CROWD[Math.floor(Math.random() * CROWD.length)];
-          for (let i = 0; i < 26; i++) { const a = (i / 26) * Math.PI * 2, v = 1.2 + Math.random() * 1.4; sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 0.6, c, life: 14 + Math.floor(Math.random() * 8) }); } };
+          for (let i = 0; i < 34; i++) { const a = (i / 34) * Math.PI * 2, v = 0.5 + Math.random() * 0.7; sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 0.25, c, life: 1.1 + Math.random() * 0.6 }); } };
         for (let i = 0; i < n; i++) setTimeout(burst, i * 380);
       },
     };
@@ -199,50 +217,74 @@
       <div class="bar"><i style="width:${Math.min(100, (per / max) * 100).toFixed(1)}%"></i><u style="left:${((opp / max) * 100).toFixed(1)}%" title="Average opponent"></u></div>
       <small class="note">The line is the average opponent: ${fmt(opp, 0)} a week.</small></div>`;
   }
+  function boardHtml(run, sp) {
+    const ro = sp.roster;
+    return `<p class="px17-kick">Draft board · best season with the ${esc(sp.name)}</p>
+      ${ro.players.map((p, i) => {
+        const taken = run.picks.some((x) => x.name === p.name);
+        const where = taken ? [] : slotsFor(run, p.pos);
+        return `<div class="px17-p ${where.length ? '' : 'no'}" style="--d:${Math.min(i, 10) * 45}ms"><span class="pos ${p.pos}">${p.pos}</span>
+          <div class="pi"><b>${esc(p.name)}</b><small>${sp.decade ? `<em>${p.year}</em> · ` : ''}${p.g} of ${p.games || ro.games} games · ${esc(statLine(p))}</small></div>
+          <div class="pts"><b>${fmt(p.ppr, 0)}</b><small>PPR</small></div>
+          <div class="go">${taken ? '<small>On your team</small>' : where.length ? where.map((s, j) => `<button type="button" class="px-go small ${j ? 'teal' : ''}" data-act="s17pick" data-id="${esc(p.id)}" data-slot="${s}">${j ? LABEL[s] : `Draft · ${LABEL[s]}`}</button>`).join('') : '<small>No open spot</small>'}</div></div>`;
+      }).join('')}
+      <p class="px17-foot">PPR is his real fantasy total for that whole season (1 per catch). Missed games are already in it.</p>`;
+  }
   function draw(animate) {
     const run = S.s17.run;
     if (run.done) return drawSeason(run);
-    const sp = run.spin, ro = sp.roster;
+    const sp = run.spin;
     const fresh = S.s17.fresh; S.s17.fresh = false;
+    const roll = animate && !calm.matches;
+    const yr = sp.decade ? `${sp.year}s` : String(sp.year), tm = sp.decade ? sp.name.replace(/^\d{4}s /, '') : sp.name;
     const pips = SLOTS.map((_, i) => `<i class="${i < run.round ? 'done' : i === run.round ? 'now' : ''}"></i>`).join('');
     paint(`${back(`<span class="px17-kick">Round ${run.round + 1} of ${SLOTS.length}</span><span class="px17-pips">${pips}</span>`)}
       ${lineupBar(run, !fresh)}
       ${power(run)}
-      <section class="px-panel px17-spin" style="--tc:${esc(SL.teamInfo(sp.team).color || '#3d4590')}">
-        <p class="px17-kick">Your spin</p>
+      <section class="px-panel px17-spin ${roll ? '' : 'set'}" id="s17Spin" style="--tc:${esc(SL.teamInfo(sp.team).color || '#3d4590')}">
+        <i class="px17-tint" aria-hidden="true"></i>
+        <p class="px17-kick">${roll ? 'Spinning…' : 'Your spin'}</p>
         <div class="px17-reels" id="s17Wheel">
-          <div class="reel logo">${tlogo(sp.team)}</div>
-          <div class="reel yr"><b class="s17-year">${sp.decade ? `${sp.year}s` : sp.year}</b></div>
-          <div class="reel tm"><b class="s17-team">${esc(sp.decade ? sp.name.replace(/^\d{4}s /, '') : sp.name)}</b></div>
+          <div class="reel logo"><span class="q">?</span><span class="lg">${tlogo(sp.team)}</span></div>
+          <div class="reel yr"><div class="rstrip"><b class="s17-year">${esc(yr)}</b></div></div>
+          <div class="reel tm"><div class="rstrip"><b class="s17-team">${esc(tm)}</b></div></div>
         </div>
         <div class="px17-re"><button type="button" class="px-go teal small" data-act="s17re" data-k="team" ${sp.canTeam ? '' : 'disabled'}>↻ New team</button><button type="button" class="px-go teal small" data-act="s17re" data-k="year" ${sp.canYear ? '' : 'disabled'}>↻ ${sp.decade ? 'New decade' : 'New year'}</button><small>${sp.canTeam || sp.canYear ? 'One re-spin this round' : 'Re-spin used'}</small></div>
       </section>
-      <section class="px-panel px17-board">
-        <p class="px17-kick">Draft board · best season with the ${esc(sp.name)}</p>
-        ${ro.players.map((p, i) => {
-          const taken = run.picks.some((x) => x.name === p.name);
-          const where = taken ? [] : slotsFor(run, p.pos);
-          return `<div class="px17-p ${where.length ? '' : 'no'}" style="--d:${Math.min(i, 12) * 35}ms"><span class="pos ${p.pos}">${p.pos}</span>
-            <div class="pi"><b>${esc(p.name)}</b><small>${sp.decade ? `<em>${p.year}</em> · ` : ''}${p.g} of ${p.games || ro.games} games · ${esc(statLine(p))}</small></div>
-            <div class="pts"><b>${fmt(p.ppr, 0)}</b><small>PPR</small></div>
-            <div class="go">${taken ? '<small>On your team</small>' : where.length ? where.map((s, j) => `<button type="button" class="px-go small ${j ? 'teal' : ''}" data-act="s17pick" data-id="${esc(p.id)}" data-slot="${s}">${j ? LABEL[s] : `Draft · ${LABEL[s]}`}</button>`).join('') : '<small>No open spot</small>'}</div></div>`;
-        }).join('')}
-        <p class="px17-foot">PPR is his real fantasy total for that whole season (1 per catch). Missed games are already in it.</p>
-      </section>`);
-    if (animate && !calm.matches) spinAnim(sp); else landed();
+      <section class="px-panel px17-board ${roll ? 'wait' : 'in'}" id="s17Board">${roll ? '<p class="px17-kick">Draft board</p><p class="px17-wait">The players show up when the spin lands.</p>' : boardHtml(run, sp)}</section>`);
+    if (roll) spinAnim(run, sp, yr, tm); else { const w = $('#s17Wheel'); w?.classList.add('landed'); }
   }
-  // a slot machine: the decade and team reels roll in steps, then slam down
-  function spinAnim(sp) {
+  // A slot machine: each reel is a strip of names that glides up and eases to a stop.
+  // The decade stops first, then the team; only then do the logo, team colors and players appear.
+  const NICK = ['Cowboys', 'Dolphins', 'Packers', 'Steelers', '49ers', 'Chiefs', 'Bills', 'Lions', 'Broncos', 'Giants', 'Raiders', 'Bears', 'Eagles', 'Rams', 'Vikings', 'Saints', 'Patriots', 'Jets', 'Colts', 'Browns', 'Bengals', 'Seahawks', 'Falcons', 'Chargers', 'Cardinals', 'Buccaneers', 'Titans', 'Jaguars', 'Ravens', 'Texans', 'Panthers', 'Commanders'];
+  function spinAnim(run, sp, yr, tm) {
     const w = $('#s17Wheel'); if (!w) return;
-    const y = $('.s17-year', w), tm = $('.s17-team', w);
-    const names = ['Cowboys', 'Dolphins', 'Packers', 'Steelers', '49ers', 'Chiefs', 'Bills', 'Lions', 'Broncos', 'Giants', 'Raiders', 'Bears', 'Eagles', 'Rams'];
+    const token = (S.s17.spinToken = (S.s17.spinToken || 0) + 1);
+    const pick = (list, n, not) => Array.from({ length: n }, () => { let v; do v = list[Math.floor(Math.random() * list.length)]; while (v === not); return v; });
+    const decs = ['1970s', '1980s', '1990s', '2000s', '2010s', '2020s'];
+    const reel = (sel, items, finalCls, final, ms) => new Promise((done) => {
+      const box = $(sel, w), strip = $('.rstrip', box);
+      strip.innerHTML = [...items, final].map((v, k) => `<b class="${finalCls}${k === items.length ? ' final' : ''}">${esc(v)}</b>`).join('');
+      const h = strip.firstElementChild.getBoundingClientRect().height;
+      const a = strip.animate([{ transform: 'translateY(0)' }, { transform: `translateY(${-items.length * h}px)` }],
+        { duration: ms, easing: 'cubic-bezier(.16,.78,.26,1.04)', fill: 'forwards' });
+      a.onfinish = () => { box.classList.add('stop'); buzz(8); done(); };
+    });
     w.classList.add('rolling');
-    let i = 0;
-    const t = setInterval(() => { y.textContent = `${1970 + 10 * Math.floor(Math.random() * 6)}s`; tm.textContent = names[i++ % names.length]; }, 60);
-    setTimeout(() => { y.textContent = sp.decade ? `${sp.year}s` : sp.year; w.classList.add('y-in'); }, 520);
-    setTimeout(() => { clearInterval(t); tm.textContent = sp.name.replace(/^\d{4}s /, ''); w.classList.remove('rolling'); w.classList.add('landed'); landed(); buzz(12); }, 900);
+    Promise.all([
+      reel('.reel.yr', pick(decs, 14, yr), 's17-year', yr, 1150),
+      reel('.reel.tm', pick(NICK, 24, tm), 's17-team', tm, 1750),
+    ]).then(() => {
+      if (S.s17.spinToken !== token || !w.isConnected) return;
+      w.classList.remove('rolling'); w.classList.add('landed');
+      const spin = $('#s17Spin'); spin?.classList.add('set');
+      const k = $('.px17-kick', spin); if (k) k.textContent = 'Your spin';
+      landed(); buzz(14);
+      const b = $('#s17Board');
+      if (b) { b.innerHTML = boardHtml(run, sp); requestAnimationFrame(() => { b.classList.remove('wait'); b.classList.add('in'); }); }
+    });
   }
-  function landed() { S.s17.st?.flash('244,196,78', 0.5); }
+  function landed() { S.s17.st?.flash('244,196,78', 0.45); S.s17.st?.cheer(0.35); }
   SL.acts.s17re = async (t) => {
     t.disabled = true;
     try { S.s17.run = (await api('/api/170/respin', { method: 'POST', body: { runId: S.s17.run.id, kind: t.dataset.k } })).run; draw(true); }
