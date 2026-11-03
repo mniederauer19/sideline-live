@@ -1,6 +1,6 @@
 // 17-0: spin a team + season (1970 to today), draft one player from that team that year into
 // your lineup (QB, RB, WR, WR, TE, FLEX), 6 rounds. Then the lineup plays a
-// 17-game season: each player scores his era-adjusted PPR points per game (with good and bad weeks). Era adjustment back on (Max's call, Nov 3)
+// Each player scores his real PPR points per game from that season (with good and bad weeks). No era adjustment (Max's final call, Nov 3)
 // and misses as many weeks as he missed that season. Can it go 17-0?
 const crypto = require('crypto');
 const DATA = require('./data/seasons.json');
@@ -77,8 +77,10 @@ function spins(mode, seed) {
   return { franchise: fr, rounds: out };
 }
 
-// What a season is worth to you: era-adjusted points per game, times the share of games he played
-const worth = (p) => p.adj * Math.min(1, p.g / p.games);
+// Real PPR points per game that season, no adjustment
+const ppg = (p) => (p.g ? p.ppr / p.g : 0);
+// What a season is worth to you: points per game, times the share of games he played
+const worth = (p) => ppg(p) * Math.min(1, p.g / p.games);
 // A team's decade: each player once, with his best season for that team in those years
 function rosterDecade(team, decade) {
   const best = new Map();
@@ -105,7 +107,7 @@ function roster(team, year, decade = false) {
 }
 
 // ---------- the season ----------
-const OPP_MEAN = 105, OPP_SD = 16, NOISE = 0.42;
+const OPP_MEAN = 96, OPP_SD = 16, NOISE = 0.42;
 function normal(r) { let u = 0, v = 0; while (!u) u = r(); while (!v) v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
 // The season is shaped like a fantasy league (Max's call, Nov 3): 14 regular-season weeks in a
 // 12-team league, the top 8 make the playoffs, then a quarterfinal, semifinal and championship.
@@ -123,7 +125,7 @@ function simulate(lineup, seed) {
     let you = 0; const out = [];
     const line = lineup.map((p, i) => {
       if (!plays[i].has(w)) { out.push(p.name); return 0; }
-      const pts = Math.max(0, p.adj * Math.exp(normal(r) * NOISE - NOISE * NOISE / 2));
+      const pts = Math.max(0, ppg(p) * Math.exp(normal(r) * NOISE - NOISE * NOISE / 2));
       you += pts; return +pts.toFixed(1);
     });
     const opp = Math.max(60, OPP_MEAN + boost + normal(r) * OPP_SD);
