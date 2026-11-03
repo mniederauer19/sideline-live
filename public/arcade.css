@@ -533,6 +533,7 @@ a.un-plain { color: inherit; }
 /* ---------- 17-0 ---------- */
 .ar-tile.new { border-color: var(--gold); box-shadow: 0 0 0 1px color-mix(in srgb, var(--gold) 30%, transparent) inset; }
 .s17-modes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 16px; }
+.s17-modes.one { grid-template-columns: 1fr; }
 .s17-mode { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 18px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); text-align: left; color: var(--ink); transition: transform .18s, border-color .2s; }
 .s17-mode:hover { transform: translateY(-3px); border-color: var(--gold); }
 .s17-mode.daily { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 7%, var(--card)); }

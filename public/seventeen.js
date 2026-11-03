@@ -12,8 +12,7 @@
   const LABEL = { QB: 'QB', RB1: 'RB', RB2: 'RB', WR1: 'WR', WR2: 'WR', TE: 'TE', FLEX: 'FLEX', SF: 'SUPERFLEX' };
   const FITS = { QB: ['QB'], RB1: ['RB'], RB2: ['RB'], WR1: ['WR'], WR2: ['WR'], TE: ['TE'], FLEX: ['RB', 'WR', 'TE'], SF: ['QB', 'RB', 'WR', 'TE'] };
   const MODES = {
-    decades: ['📼', 'Decades', 'Spin a team and a decade (the \'70s to today), then take any player\'s best season with them.'],
-    unlimited: ['♾️', 'Unlimited', 'Spin a team and one exact season. Play as many as you want.'],
+    decades: ['📼', 'Start a season', 'Spin a team and a decade (the \'70s to today), take any player\'s best season with them. Play as many as you want.'],
   };
   SL.navFor['170'] = 'arcade';
   S.s17 = { run: null };
@@ -34,15 +33,15 @@
 
   // ---------- home ----------
   async function showHome() {
-    view.innerHTML = `${pageHead('Arcade · 1970 to today', '17-0', 'Spin a team and a season. Draft one player.<br>Fill 8 spots. Can your lineup go 17-0?')}<div id="s17Body">${skel(3, 'cards')}</div>`;
+    view.innerHTML = `${pageHead('Arcade · the \'70s to today', '17-0', 'Spin a team and a decade. Draft one player.<br>Fill 8 spots. Can your lineup go 17-0?')}<div id="s17Body">${skel(3, 'cards')}</div>`;
     let t = null; try { t = await api('/api/170/today'); } catch { /* still playable */ }
     const el = $('#s17Body'); if (!el || !/^#\/?170\/?$/.test(location.hash)) return; // moved on while this loaded
-    el.innerHTML = `<div class="s17-modes">${Object.entries(MODES).map(([k, [e, title, line]]) => `<button type="button" class="s17-mode ${k}" data-act="s17start" data-mode="${k}"><span class="e">${e}</span><b>${title}</b><span>${line}</span></button>`).join('')}</div>
+    el.innerHTML = `<div class="s17-modes one">${Object.entries(MODES).map(([k, [e, title, line]]) => `<button type="button" class="s17-mode ${k}" data-act="s17start" data-mode="${k}"><span class="e">${e}</span><b>${title}</b><span>${line}</span></button>`).join('')}</div>
       ${t?.best ? `<div class="s17-best"><span>Your best <b>${t.best.wins}-${17 - t.best.wins}</b></span><span>Perfect seasons <b>${t.best.perfect}</b></span><span>Seasons played <b>${t.best.played}</b></span></div>` : ''}
       <section class="s17-sec s17-how"><div class="label">How it works</div><ol>
-        <li>Each round spins a random team: in <b>Decades</b> with a decade (like the 1980s 49ers), in <b>Unlimited</b> with one season, anywhere from ${t?.years?.[0] || 1970} to ${t?.years?.[1] || 'today'}.</li>
-        <li>Draft one player from that spin into an open spot: QB, 2 RB, 2 WR, TE, FLEX or SuperFlex (any position).</li>
-        <li>Don't like the spin? Each round you get <b>one re-spin</b>: a new team, or the same team in a different decade (or year).</li>
+        <li>Each round spins a random <b>team and decade</b>, like the 1980s 49ers, anywhere from the 1970s to today.</li>
+        <li>Draft any player's <b>best season</b> with that team in that decade into an open spot: QB, 2 RB, 2 WR, TE, FLEX or SuperFlex (any position).</li>
+        <li>Don't like the spin? Each round you get <b>one re-spin</b>: a new team, or the same team in a different decade.</li>
         <li>Your lineup plays 17 games. Players score their real season, <b>era-adjusted</b> so a 1977 season counts as much as one from today, and they miss the games they missed that year.</li>
         <li>Go 17-0 for the <b>Perfect 17-0</b> badge and a card pack.</li></ol></section>`;
   }
