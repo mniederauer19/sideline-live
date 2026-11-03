@@ -32,3 +32,13 @@ test('a season is 17 games and the same lineup + seed plays out the same', () =>
   assert.equal(a.weeks.length, 17); assert.equal(a.wins + a.losses, 17);
   assert.deepEqual(a, b);
 });
+test('decades: a team + decade, each player once with his best season', () => {
+  const sp = S.spins('decades', 'z');
+  assert.ok(sp.rounds.every((r) => r.decade && S.DECADES.includes(r.year)));
+  const ro = S.roster('SF', 1980, true);
+  assert.equal(ro.name, '1980s 49ers');
+  const names = ro.players.map((p) => p.name);
+  assert.equal(new Set(names).size, names.length);
+  assert.ok(ro.players.every((p) => p.year >= 1980 && p.year <= 1989));
+  assert.equal(S.roster('IND', 1970, true).name, '1970s Colts');
+});

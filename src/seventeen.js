@@ -29,6 +29,13 @@ function eraName(team, y) {
 }
 const teamsIn = (y) => Object.keys(DATA.seasons[y]?.teams || {}).sort();
 const yearsOf = (team) => YEARS.filter((y) => DATA.seasons[y].teams[team]);
+// Decades mode: a spin is a team + a decade (the 1970s on)
+const DECADES = [1970, 1980, 1990, 2000, 2010, 2020];
+const inDecade = (y, d) => y >= d && y < d + 10;
+const decadesOf = (team) => DECADES.filter((d) => yearsOf(team).some((y) => inDecade(y, d)));
+const teamsInDecade = (d) => [...new Set(YEARS.filter((y) => inDecade(y, d)).flatMap(teamsIn))].sort();
+const nickname = (team, y) => { const n = eraName(team, y); return n === 'Washington' || n === 'Washington Commanders' ? 'Washington' : n.split(' ').slice(-1)[0]; };
+const spinName = (cur) => (cur.decade ? `${cur.year}s ${nickname(cur.team, Math.min(cur.year + 5, YEARS[YEARS.length - 1]))}` : eraName(cur.team, cur.year));
 
 // ---------- seeded randomness (the same seed always gives the same spins and season) ----------
 function rng(seed) {
@@ -43,6 +50,18 @@ function spins(mode, seed) {
   const out = [];
   const used = new Set();
   const fr = mode === 'franchise' ? pick(r, Object.keys(NAMES)) : null;
+  if (mode === 'decades') {
+    for (let i = 0; i < 8; i++) {
+      let decade, team, guard = 0;
+      do { decade = pick(r, DECADES); team = pick(r, teamsInDecade(decade)); } while (used.has(`${team}${decade}`) && guard++ < 30);
+      used.add(`${team}${decade}`);
+      const otherTeams = teamsInDecade(decade).filter((t) => t !== team);
+      const otherDecades = decadesOf(team).filter((d) => d !== decade && !used.has(`${team}${d}`));
+      out.push({ team, year: decade, decade: true, altTeam: { team: pick(r, otherTeams), year: decade, decade: true },
+        altYear: otherDecades.length ? { team, year: pick(r, otherDecades), decade: true } : null });
+    }
+    return { franchise: null, rounds: out };
+  }
   for (let i = 0; i < 8; i++) {
     let year, team, guard = 0;
     do {
@@ -57,12 +76,27 @@ function spins(mode, seed) {
   return { franchise: fr, rounds: out };
 }
 
-function roster(team, year) {
+// A team's decade: each player once, with his best season for that team in those years
+function rosterDecade(team, decade) {
+  const best = new Map();
+  for (const y of yearsOf(team).filter((x) => inDecade(x, decade))) {
+    for (const p of roster(team, y).players) {
+      const value = p.adj * Math.min(1, p.g / DATA.seasons[y].g);
+      const prev = best.get(p.name);
+      if (!prev || value > prev.value) best.set(p.name, { ...p, year: y, games: DATA.seasons[y].g, value });
+    }
+  }
+  const players = [...best.values()].sort((a, b) => b.value - a.value).slice(0, 40).map(({ value, ...p }) => p);
+  return { team, year: decade, decade: true, name: spinName({ team, year: decade, decade: true }), games: null, players };
+}
+function roster(team, year, decade = false) {
+  if (decade) return rosterDecade(team, year);
   const s = DATA.seasons[year]; const rows = s?.teams?.[team];
   if (!rows) return null;
   return { team, year, name: eraName(team, year), games: s.g, players: rows.map((r) => {
     const o = Object.fromEntries(DATA.cols.map((c, i) => [c, r[i]]));
     o.id = `${year}-${team}-${o.name}`.replace(/\s+/g, '_');
+    o.year = year; o.games = s.g;
     return o;
   }) };
 }
@@ -93,7 +127,7 @@ function simulate(lineup, seed) {
   return { wins, losses: 17 - wins, weeks, points: +weeks.reduce((a, x) => a + x.you, 0).toFixed(1) };
 }
 
-module.exports = { DATA, SLOTS, FITS, YEARS, NAMES, eraName, spins, roster, simulate, teamsIn, yearsOf, OPP_MEAN };
+module.exports = { DATA, SLOTS, FITS, YEARS, NAMES, DECADES, eraName, spins, roster, simulate, teamsIn, yearsOf, decadesOf, OPP_MEAN };
 
 // ---------- the game on the server (so a 17-0 is real) ----------
 const db = require('./db');
@@ -116,7 +150,7 @@ function mount(app, { A }) {
     const sp = spins(run.mode, run.seed).rounds[run.round] || null;
     const out = { id: run.id, mode: run.mode, day: run.day, number: run.day ? dayNo(run.day) : null, round: run.round, picks, done: run.round >= 8,
       franchise: run.mode === 'franchise' ? spins(run.mode, run.seed).franchise : null, mine: !run.user_id || run.user_id === meId, counted: !!run.counted };
-    if (!out.done && cur) out.spin = { ...cur, name: eraName(cur.team, cur.year), roster: roster(cur.team, cur.year), canTeam: !run.rerolled && !!sp?.altTeam, canYear: !run.rerolled && !!sp?.altYear };
+    if (!out.done && cur) out.spin = { ...cur, name: spinName(cur), roster: roster(cur.team, cur.year, cur.decade), canTeam: !run.rerolled && !!sp?.altTeam, canYear: !run.rerolled && !!sp?.altYear };
     if (out.done) {
       const lineup = picks.map((p) => ({ ...p, games: DATA.seasons[p.year].g }));
       out.result = simulate(lineup, `${run.mode}:${run.seed}:${run.id}`);
@@ -124,7 +158,7 @@ function mount(app, { A }) {
     return out;
   }
   app.post('/api/170/start', (req, res) => {
-    const mode = ['daily', 'unlimited', 'franchise'].includes(req.body?.mode) ? req.body.mode : 'unlimited';
+    const mode = ['daily', 'unlimited', 'franchise', 'decades'].includes(req.body?.mode) ? req.body.mode : 'unlimited';
     const day = A.etDay();
     if (mode === 'daily' && req.user) {
       const prev = db.prepare("SELECT * FROM s17_runs WHERE user_id=? AND mode='daily' AND day=? ORDER BY counted DESC, created_at DESC LIMIT 1").get(req.user.id, day);
@@ -134,7 +168,7 @@ function mount(app, { A }) {
     const seed = mode === 'daily' ? day : crypto.randomBytes(8).toString('hex');
     const first = spins(mode, seed).rounds[0];
     db.prepare('INSERT INTO s17_runs (id, user_id, mode, seed, day, cur, created_at) VALUES (?,?,?,?,?,?,?)')
-      .run(id, req.user?.id || null, mode, seed, mode === 'daily' ? day : null, JSON.stringify({ team: first.team, year: first.year }), Date.now());
+      .run(id, req.user?.id || null, mode, seed, mode === 'daily' ? day : null, JSON.stringify({ team: first.team, year: first.year, decade: !!first.decade }), Date.now());
     save(id);
     res.json({ run: view(load(id), req.user?.id) });
   });
@@ -162,7 +196,7 @@ function mount(app, { A }) {
   app.post('/api/170/pick', (req, res) => {
     const run = own(req, res); if (!run) return;
     const cur = JSON.parse(run.cur);
-    const ro = roster(cur.team, cur.year);
+    const ro = roster(cur.team, cur.year, cur.decade);
     const p = ro?.players.find((x) => x.id === req.body?.playerId);
     if (!p) return res.status(400).json({ error: 'That player wasn\'t on this team that year.' });
     const picks = JSON.parse(run.picks);
@@ -170,11 +204,11 @@ function mount(app, { A }) {
     const open = SLOTS.filter((s) => !picks.some((x) => x.slot === s));
     const slot = req.body?.slot && open.includes(req.body.slot) ? req.body.slot : null;
     if (!slot || !FITS[slot].includes(p.pos)) return res.status(400).json({ error: `${p.name} can't play there.` });
-    picks.push({ slot, round: run.round, team: cur.team, year: cur.year, teamName: ro.name, name: p.name, pos: p.pos, g: p.g, ppr: p.ppr, adj: p.adj,
+    picks.push({ slot, round: run.round, team: cur.team, year: p.year, teamName: eraName(cur.team, p.year), name: p.name, pos: p.pos, g: p.g, ppr: p.ppr, adj: p.adj,
       passYds: p.passYds, passTd: p.passTd, rushYds: p.rushYds, rushTd: p.rushTd, rec: p.rec, recYds: p.recYds, recTd: p.recTd });
     const round = run.round + 1;
     const next = spins(run.mode, run.seed).rounds[round];
-    db.prepare('UPDATE s17_runs SET picks=?, round=?, rerolled=0, cur=? WHERE id=?').run(JSON.stringify(picks), round, next ? JSON.stringify({ team: next.team, year: next.year }) : null, run.id);
+    db.prepare('UPDATE s17_runs SET picks=?, round=?, rerolled=0, cur=? WHERE id=?').run(JSON.stringify(picks), round, next ? JSON.stringify({ team: next.team, year: next.year, decade: !!next.decade }) : null, run.id);
     if (round >= 8) {
       const v = view(load(run.id), req.user?.id);
       const r = v.result;

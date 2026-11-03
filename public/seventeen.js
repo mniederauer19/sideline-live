@@ -14,6 +14,7 @@
   const MODES = {
     daily: ['📅', 'Daily', 'Everyone gets the same 8 spins today. One run counts for the leaderboard.'],
     unlimited: ['♾️', 'Unlimited', 'Fresh spins every game. Play as many seasons as you want.'],
+    decades: ['📼', 'Decades', 'Spin a team and a decade (the \'70s to today), then take any player\'s best season with them.'],
     franchise: ['🏟️', 'Franchise', 'One team, 8 different seasons from its history.'],
   };
   SL.navFor['170'] = 'arcade';
@@ -81,22 +82,22 @@
     const run = S.s17.run;
     if (run.done) return drawSeason(run);
     const sp = run.spin, ro = sp.roster;
-    const modeTag = run.mode === 'daily' ? `Daily #${run.number}${run.counted === false && !run.mine ? '' : ''}` : run.mode === 'franchise' ? 'Franchise' : 'Unlimited';
+    const modeTag = run.mode === 'daily' ? `Daily #${run.number}` : run.mode === 'franchise' ? 'Franchise' : run.mode === 'decades' ? 'Decades' : 'Unlimited';
     view.innerHTML = `<div class="s17-top"><a class="s17-back" href="#/170">‹ 17-0</a><span class="label">${esc(modeTag)} · Round ${run.round + 1} of 8</span></div>
       ${lineupBar(run)}
       <section class="s17-spin" style="--tc:${esc(SL.teamInfo(sp.team).color || '#33415a')}">
-        <div class="s17-wheel" id="s17Wheel">${tlogo(sp.team)}<div><div class="s17-year">${sp.year}</div><div class="s17-team">${esc(sp.name)}</div></div></div>
-        <div class="s17-re">${run.mode !== 'franchise' ? `<button type="button" class="pill" data-act="s17re" data-k="team" ${sp.canTeam ? '' : 'disabled'}>🔄 New team</button>` : ''}<button type="button" class="pill" data-act="s17re" data-k="year" ${sp.canYear ? '' : 'disabled'}>🔄 New year</button><small>${sp.canTeam || sp.canYear ? 'One re-spin this round' : 'Re-spin used'}</small></div>
+        <div class="s17-wheel" id="s17Wheel">${tlogo(sp.team)}<div><div class="s17-year">${sp.decade ? `${sp.year}s` : sp.year}</div><div class="s17-team">${esc(sp.decade ? sp.name.replace(/^\d{4}s /, '') : sp.name)}</div></div></div>
+        <div class="s17-re">${run.mode !== 'franchise' ? `<button type="button" class="pill" data-act="s17re" data-k="team" ${sp.canTeam ? '' : 'disabled'}>🔄 New team</button>` : ''}<button type="button" class="pill" data-act="s17re" data-k="year" ${sp.canYear ? '' : 'disabled'}>🔄 ${sp.decade ? 'New decade' : 'New year'}</button><small>${sp.canTeam || sp.canYear ? 'One re-spin this round' : 'Re-spin used'}</small></div>
       </section>
       <div class="s17-roster">${ro.players.map((p) => {
         const taken = run.picks.some((x) => x.name === p.name);
         const where = taken ? [] : slotsFor(run, p.pos);
         return `<div class="s17-p ${where.length ? '' : 'no'}"><span class="s17-ini">${esc(ini(p.name))}</span>
-          <div class="s17-pi"><b>${esc(p.name)}</b><small>${p.pos} · ${p.g} of ${ro.games} games · ${esc(statLine(p))}</small></div>
+          <div class="s17-pi"><b>${esc(p.name)}</b><small>${sp.decade ? `<b class="s17-yr">${p.year}</b> · ` : ''}${p.pos} · ${p.g} of ${p.games || ro.games} games · ${esc(statLine(p))}</small></div>
           <div class="s17-pts"><b>${fmt(p.adj)}</b><small>adj/g</small></div>
           <div class="s17-go">${taken ? '<small>On your team</small>' : where.length ? where.map((s, i) => `<button type="button" class="btn ${i ? 'ghost' : ''} sm" data-act="s17pick" data-id="${esc(p.id)}" data-slot="${s}">${i ? LABEL[s] : `Draft · ${LABEL[s]}`}</button>`).join('') : '<small>No open spot</small>'}</div></div>`;
       }).join('')}</div>
-      <p class="rules s17-note">“adj/g” is era-adjusted points per game in PPR: his points per game that season, against the average starter at his position that year, put on today's scale. ${esc(String(ro.year))} had ${ro.games} games, and missed games count against you.</p>`;
+      <p class="rules s17-note">“adj/g” is era-adjusted points per game in PPR: his points per game that season, against the average starter at his position that year, put on today's scale. ${sp.decade ? 'Each player shows his best season with this team in the decade.' : `${esc(String(ro.year))} had ${ro.games} games.`} Missed games count against you.</p>`;
     if (animate && !calm.matches) spinAnim(sp);
   }
   function spinAnim(sp) {
@@ -105,8 +106,8 @@
     const names = ['Dallas Cowboys', 'Miami Dolphins', 'Green Bay Packers', 'Pittsburgh Steelers', 'San Francisco 49ers', 'Kansas City Chiefs', 'Buffalo Bills', 'Detroit Lions', 'Denver Broncos', 'New York Giants'];
     w.classList.add('rolling');
     let i = 0;
-    const t = setInterval(() => { y.textContent = 1970 + Math.floor(Math.random() * 56); tm.textContent = names[i++ % names.length]; }, 55);
-    setTimeout(() => { clearInterval(t); y.textContent = sp.year; tm.textContent = sp.name; w.classList.remove('rolling'); w.classList.add('landed'); }, 750);
+    const t = setInterval(() => { y.textContent = sp.decade ? `${1970 + 10 * Math.floor(Math.random() * 6)}s` : 1970 + Math.floor(Math.random() * 56); tm.textContent = names[i++ % names.length]; }, 55);
+    setTimeout(() => { clearInterval(t); y.textContent = sp.decade ? `${sp.year}s` : sp.year; tm.textContent = sp.name.replace(/^\d{4}s /, ''); w.classList.remove('rolling'); w.classList.add('landed'); }, 750);
   }
   SL.acts.s17re = async (t) => {
     try { S.s17.run = (await api('/api/170/respin', { method: 'POST', body: { runId: S.s17.run.id, kind: t.dataset.k } })).run; draw(true); }
@@ -127,7 +128,7 @@
     const perfect = r.wins === 17;
     const best = r.weeks.reduce((a, w) => (w.you > a.you ? w : a), r.weeks[0]);
     const losses = r.weeks.filter((w) => !w.win).sort((a, b) => (b.you - b.opp) - (a.you - a.opp));
-    view.innerHTML = `<div class="s17-top"><a class="s17-back" href="#/170">‹ 17-0</a><span class="label">${run.mode === 'daily' ? `Daily #${run.number}` : run.mode === 'franchise' ? 'Franchise' : 'Unlimited'} · The season</span></div>
+    view.innerHTML = `<div class="s17-top"><a class="s17-back" href="#/170">‹ 17-0</a><span class="label">${run.mode === 'daily' ? `Daily #${run.number}` : run.mode === 'franchise' ? 'Franchise' : run.mode === 'decades' ? 'Decades' : 'Unlimited'} · The season</span></div>
       <section class="s17-res ${perfect ? 'perfect' : ''}"><div class="s17-rec"><b id="s17W">0</b><i>-</i><b id="s17L">0</b></div><div class="s17-verdict" id="s17V">&nbsp;</div>
         <div class="s17-weeks">${r.weeks.map((w) => `<div class="s17-wk ${w.win ? 'w' : 'l'}" title="Week ${w.week}: ${fmt(w.you)} to ${fmt(w.opp)}${w.out.length ? ` · out: ${esc(w.out.join(', '))}` : ''}"><small>W${w.week}</small><b>${w.win ? 'W' : 'L'}</b><span>${fmt(w.you, 0)}-${fmt(w.opp, 0)}</span></div>`).join('')}</div></section>
       <div class="s17-facts"><span>Season points <b>${fmt(r.points, 0)}</b></span><span>Best week <b>${fmt(best.you)}</b> (W${best.week})</span>${losses[0] ? `<span>Closest loss <b>${fmt(losses[0].opp - losses[0].you)}</b> (W${losses[0].week}${losses[0].out.length ? `, ${esc(losses[0].out.slice(0, 2).join(' & '))} out` : ''})</span>` : ''}</div>
@@ -147,7 +148,7 @@
   }
   SL.acts.s17share = async () => {
     const run = S.s17.run, r = run.result;
-    const tag = run.mode === 'daily' ? `Daily #${run.number}` : run.mode === 'franchise' ? 'Franchise' : 'Unlimited';
+    const tag = run.mode === 'daily' ? `Daily #${run.number}` : run.mode === 'franchise' ? 'Franchise' : run.mode === 'decades' ? 'Decades' : 'Unlimited';
     const text = `Sideline 17-0 · ${tag}\n${r.wins}-${r.losses}${r.wins === 17 ? ' 🏆' : ''}\n${r.weeks.map((w) => (w.win ? '🟩' : '🟥')).join('')}\n${run.picks.map((p) => `${LABEL[p.slot]} ${p.name} '${String(p.year).slice(2)}`).join(', ')}\n${location.href.split('#')[0]}#/170`;
     if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e.name === 'AbortError') return; } }
     try { await navigator.clipboard.writeText(text); toast('Copied. Paste it anywhere.'); } catch { prompt('Copy your season', text); }
