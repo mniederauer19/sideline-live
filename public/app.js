@@ -39,8 +39,15 @@
   // Page changes cross-fade, a freshly opened page's blocks rise in, and numbers that change count up.
   const calm = window.matchMedia('(prefers-reduced-motion: reduce)');
   function swap(fn) {
-    if (calm.matches || !document.startViewTransition) return fn();
-    try { const t = document.startViewTransition(fn); t.ready?.catch(() => {}); return t; } catch { return fn(); } // a skipped transition is fine
+    if (calm.matches || !document.startViewTransition || document.hidden) return fn();
+    try {
+      let ran = false;
+      const t = document.startViewTransition(() => { ran = true; return fn(); });
+      t.ready?.catch(() => {}); // a skipped transition is fine
+      // If the browser stalls the transition (busy phone, background tab), skip the animation so the page still draws
+      setTimeout(() => { if (!ran) try { t.skipTransition(); } catch { fn(); } }, 350);
+      return t;
+    } catch { return fn(); }
   }
   // ---------- motion helpers ----------
   // A highlight that glides to the selected tab/filter instead of jumping
