@@ -291,7 +291,7 @@
     await loadLocker();
     drawLocker();
   }
-  const PART_LABEL = { picks: 'Picks', callit: 'Call It', daily: 'Daily', takes: 'Hot takes', court: 'Ref Court', duels: 'Duels', props: 'Props', badges: 'Badges', cards: 'Cards', comments: 'Comments', lineups: 'Lineups' };
+  const PART_LABEL = { picks: 'Picks', callit: 'Call It', daily: 'Daily', takes: 'Hot takes', duels: 'Duels', props: 'Props', badges: 'Badges', cards: 'Cards', comments: 'Comments', lineups: 'Lineups' };
   function drawLocker() {
     const l = S.locker, el = $('#lkBody'); if (!l || !el) return;
     const pct = Math.round((l.xp - l.thisLevel) / Math.max(1, l.nextLevel - l.thisLevel) * 100);

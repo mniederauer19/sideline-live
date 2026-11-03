@@ -2,7 +2,6 @@
 //   Call It      guess the next play (run, short pass, deep shot, touchdown) before the snap
 //   Daily        guess the player from a stat line, 6 tries, one puzzle a day
 //   Rooms        a chat room for each league synced on sidelineff.com
-//   Ref Court    "Good call" or "Robbery" on flags and replay reviews
 //   Takes        hot takes, voted W or L now and graded later ("receipts")
 //   Duels        1v1 salary-cap lineup battles from a link
 //   Aura         points for big moments, lost for fumbles, picks and misses
@@ -315,27 +314,6 @@ async function myLeagues(req) {
 }
 const msgView = (m, meId) => ({ id: m.id, body: m.body, at: m.created_at, mine: m.user_id === meId, ...who(m.user_id) });
 
-// ======================= REF COURT =======================
-// flags that stood (a declined penalty doesn't count) and replay reviews
-const COURT_RX = /REVERSED|challenge|replay|upheld|overturned/i;
-const flagged = (t) => /PENALTY/.test(t) && !/^[^]*PENALTY[^.]*declined[^]*$/i.test(t) || /pass interference|roughing/i.test(t) && !/declined/i.test(t);
-const courtEligible = (p) => !!p && (p.nullified || p.kind === 'penalty' || COURT_RX.test(p.text || '') || flagged(p.text || ''));
-function courtInto(out, ids, userId) {
-  if (!ids.length) return;
-  const ph = ids.map(() => '?').join(',');
-  for (const r of db.prepare(`SELECT play_id, SUM(value=1) good, SUM(value=-1) bad FROM court_votes WHERE play_id IN (${ph}) GROUP BY play_id`).all(...ids)) {
-    if (out[r.play_id]) out[r.play_id].court = { good: r.good || 0, bad: r.bad || 0, mine: 0 };
-  }
-  if (userId) for (const r of db.prepare(`SELECT play_id, value FROM court_votes WHERE user_id=? AND play_id IN (${ph})`).all(userId, ...ids)) {
-    if (out[r.play_id]) (out[r.play_id].court ||= { good: 0, bad: 0, mine: 0 }).mine = r.value;
-  }
-}
-function courtFor(id, userId) {
-  const r = db.prepare('SELECT SUM(value=1) good, SUM(value=-1) bad FROM court_votes WHERE play_id=?').get(id);
-  const m = userId ? db.prepare('SELECT value FROM court_votes WHERE play_id=? AND user_id=?').get(id, userId) : null;
-  return { good: r?.good || 0, bad: r?.bad || 0, mine: m?.value || 0 };
-}
-
 // ======================= HOT TAKES =======================
 const GRADE_WINDOW = 72 * 3600e3;
 function settleAt(horizon) {
@@ -522,11 +500,10 @@ const CH = {
   allwinners: { label: "Pick every game's winner", emoji: '🏈', goal: (r) => r.games.length },
   comment3: { label: 'Comment on 3 plays', emoji: '💬', goal: () => 3 },
   take1: { label: 'Post a hot take', emoji: '🌶️', goal: () => 1 },
-  court3: { label: 'Rule on 3 calls in Ref Court', emoji: '🦓', goal: () => 3 },
   duel1: { label: 'Start or accept a lineup duel', emoji: '⚔️', goal: () => 1 },
   lineup: { label: 'Save a salary-cap lineup', emoji: '📋', goal: () => 1 },
 };
-const ROTATE = ['daily3', 'allwinners', 'comment3', 'take1', 'court3', 'duel1', 'lineup'];
+const ROTATE = ['daily3', 'allwinners', 'comment3', 'take1', 'duel1', 'lineup'];
 const weekChallenges = (week) => ['underdogs', 'streak5', ...[0, 1, 2].map((i) => ROTATE[(week * 3 + i) % ROTATE.length])];
 function progress(id, userId, week, r) {
   const season = cur().season;
@@ -550,7 +527,6 @@ function progress(id, userId, week, r) {
     case 'allwinners': return db.prepare(`SELECT COUNT(*) n FROM picks WHERE user_id=? AND market='winner' AND game_id IN (${ph})`).get(userId, ...gameIds).n;
     case 'comment3': return db.prepare(`SELECT COUNT(*) n FROM comments WHERE user_id=? AND created_at BETWEEN ? AND ?`).get(userId, r.from, r.to).n;
     case 'take1': return db.prepare('SELECT COUNT(*) n FROM takes WHERE user_id=? AND created_at BETWEEN ? AND ?').get(userId, r.from, r.to).n;
-    case 'court3': return db.prepare('SELECT COUNT(*) n FROM court_votes WHERE user_id=? AND created_at BETWEEN ? AND ?').get(userId, r.from, r.to).n;
     case 'duel1': return db.prepare('SELECT COUNT(*) n FROM duels WHERE (from_user=? OR to_user=?) AND season=? AND week=?').get(userId, userId, season, week).n;
     case 'lineup': return db.prepare('SELECT COUNT(*) n FROM lineups WHERE user_id=? AND season=? AND week=?').get(userId, season, week).n;
     default: return 0;
@@ -652,15 +628,17 @@ function setupPush() {
   webpush.setVapidDetails(process.env.PUSH_CONTACT || 'https://sidelineff.com', vapid.publicKey, vapid.privateKey);
   loadSubs();
 }
+// With the spoiler shield on, a subscriber's alerts wait as long as their TV is behind
+const later = (s, fn) => { const d = Number(s.prefs?.delay) || 0; if (d > 0) setTimeout(fn, d * 1000).unref?.(); else fn(); };
 // Send to every subscriber that `make(sub)` returns a message for
 function pushTo(make) {
   if (!webpush) return;
   for (const [endpoint, s] of subs) {
     let msg = null; try { msg = make(s); } catch { msg = null; }
     if (!msg) continue;
-    webpush.sendNotification(s.sub, JSON.stringify({ ...msg, url: `${s.sub.base || ''}${msg.hash || ''}` }), { TTL: 300, urgency: 'high' }).catch((e) => {
+    later(s, () => webpush.sendNotification(s.sub, JSON.stringify({ ...msg, url: `${s.sub.base || ''}${msg.hash || ''}` }), { TTL: 300, urgency: 'high' }).catch((e) => {
       if (e.statusCode === 404 || e.statusCode === 410) { subs.delete(endpoint); db.prepare('DELETE FROM push_subs WHERE endpoint=?').run(endpoint); persist.remove('push_subs', { endpoint }); }
-    });
+    }));
   }
 }
 const pushed = new Set();
@@ -675,9 +653,9 @@ function pushForPlay(p) {
     if (!(p.td || v >= 4 || v <= -2)) continue;
     const title = `${p.td ? '🔥 ' : v < 0 ? '💀 ' : ''}${x.name} ${v > 0 ? '+' : ''}${v.toFixed(1)} PPR`;
     const payload = JSON.stringify({ title, body: p.headline, tag: p.id, url: `${s.sub.base || ''}#/play/${encodeURIComponent(p.id)}` });
-    webpush.sendNotification(s.sub, payload, { TTL: 600, urgency: 'high' }).catch((e) => {
+    later(s, () => webpush.sendNotification(s.sub, payload, { TTL: 600, urgency: 'high' }).catch((e) => {
       if (e.statusCode === 404 || e.statusCode === 410) { subs.delete(endpoint); db.prepare('DELETE FROM push_subs WHERE endpoint=?').run(endpoint); persist.remove('push_subs', { endpoint }); }
-    });
+    }));
   }
 }
 
@@ -783,34 +761,6 @@ function mount(app, deps) {
     persist.upsert('room_msgs', { id: Number(info.lastInsertRowid) });
     send('room', { room: id, id: Number(info.lastInsertRowid) });
     res.json({ message: msgView(db.prepare('SELECT * FROM room_msgs WHERE id=?').get(info.lastInsertRowid), req.user.id) });
-  });
-
-  // ---- Ref Court ----
-  app.post('/api/plays/:id/court', needUser, (req, res) => {
-    const value = Number(req.body?.value);
-    if (![1, -1, 0].includes(value)) return res.status(400).json({ error: 'Vote Good call or Robbery.' });
-    const row = db.prepare('SELECT data FROM plays WHERE id=?').get(req.params.id);
-    if (!row) return res.status(404).json({ error: 'Play not found.' });
-    const key = { play_id: req.params.id, user_id: req.user.id };
-    if (!value) { db.prepare('DELETE FROM court_votes WHERE play_id=? AND user_id=?').run(req.params.id, req.user.id); persist.remove('court_votes', key); }
-    else { db.prepare('INSERT INTO court_votes (play_id, user_id, value, created_at) VALUES (?,?,?,?) ON CONFLICT(play_id, user_id) DO UPDATE SET value=excluded.value').run(req.params.id, req.user.id, value, Date.now()); persist.upsert('court_votes', key); }
-    const court = courtFor(req.params.id, null);
-    send('court', { id: req.params.id, court });
-    res.json({ court: courtFor(req.params.id, req.user.id) });
-  });
-  app.get('/api/court', (req, res) => {
-    const week = Number(req.query.week) || wk();
-    const ids = engine.listGames(week).map((g) => g.id);
-    if (!ids.length) return res.json({ week, plays: [] });
-    const rows = db.prepare(`SELECT id, data FROM plays WHERE game_id IN (${ids.map(() => '?').join(',')})
-      AND (data LIKE '%"nullified":true%' OR data LIKE '%"kind":"penalty"%' OR data LIKE '%PENALTY%' OR data LIKE '%REVERSED%' OR data LIKE '%challenge%' OR data LIKE '%eplay%')
-      ORDER BY ts DESC LIMIT 300`).all(...ids);
-    const plays = rows.map((r) => JSON.parse(r.data)).filter(courtEligible);
-    const map = Object.fromEntries(plays.map((p) => [p.id, {}]));
-    courtInto(map, plays.map((p) => p.id), req.user?.id);
-    const out = plays.map((p) => ({ ...p, court: { good: 0, bad: 0, mine: 0, ...map[p.id].court } }))
-      .sort((a, b) => (b.court.good + b.court.bad) - (a.court.good + a.court.bad) || b.ts - a.ts).slice(0, 40);
-    res.json({ week, plays: out });
   });
 
   // ---- Hot takes ----
@@ -932,7 +882,7 @@ function mount(app, deps) {
     const players = (Array.isArray(req.body.players) ? req.body.players : []).map(String).filter((x) => /^\d+$/.test(x)).slice(0, 200);
     const base = /^https:\/\/[^\s]+$/.test(String(req.body.base || '')) ? String(req.body.base).split('#')[0] : '';
     const rec = { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth }, base };
-    const prefs = { redzone: ['off', 'mine', 'all'].includes(req.body.prefs?.redzone) ? req.body.prefs.redzone : 'mine' };
+    const prefs = { redzone: ['off', 'mine', 'all'].includes(req.body.prefs?.redzone) ? req.body.prefs.redzone : 'mine', delay: Math.max(0, Math.min(120, Number(req.body.prefs?.delay) || 0)) };
     db.prepare(`INSERT INTO push_subs (endpoint, user_id, sub, players, created_at, prefs) VALUES (?,?,?,?,?,?)
       ON CONFLICT(endpoint) DO UPDATE SET user_id=excluded.user_id, sub=excluded.sub, players=excluded.players, prefs=excluded.prefs`).run(sub.endpoint, req.user?.id || null, JSON.stringify(rec), players.join(','), Date.now(), JSON.stringify(prefs));
     persist.upsert('push_subs', { endpoint: sub.endpoint });
@@ -997,4 +947,4 @@ function start() {
 // shared with src/arcade-plus.js
 const shared = { credit, who, whoExtras, kvGet, kvSet, cur, weekRange, weekPoints, auraOf, etDay, award, checkBadges,
   onEarn: (f) => earnHandlers.push(f), pushTo, send: (e, d) => send(e, d), priced: () => pricedSlate() };
-module.exports = { shared, mount, start, courtInto, courtEligible, callCategory, opensWindow, auraOf, bestLineup, dailyCheck, etDay, etDayStart, addDays, divOf, weekChallenges, _onPlay: onPlayForCalls, _grade: gradeCalls, _windows: windows };
+module.exports = { shared, mount, start, callCategory, opensWindow, auraOf, bestLineup, dailyCheck, etDay, etDayStart, addDays, divOf, weekChallenges, _onPlay: onPlayForCalls, _grade: gradeCalls, _windows: windows };

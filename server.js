@@ -11,6 +11,7 @@ const weeklyRanks = require('./src/weekly-ranks');
 const persist = require('./src/persist');
 const arcade = require('./src/arcade');
 const arcadePlus = require('./src/arcade-plus');
+const arcadeFun = require('./src/arcade-fun');
 const { isOffensive } = require('./src/moderation');
 
 const app = express();
@@ -300,7 +301,6 @@ function social(ids, userId) {
     for (const r of db.prepare(`SELECT play_id, emoji FROM reactions WHERE user_id=? AND play_id IN (${ph})`).all(userId, ...ids)) out[r.play_id].mine.push(r.emoji);
     for (const r of db.prepare(`SELECT play_id, value FROM votes WHERE user_id=? AND play_id IN (${ph})`).all(userId, ...ids)) out[r.play_id].myVote = r.value;
   }
-  arcade.courtInto(out, ids, userId); // Ref Court votes
   return out;
 }
 function withSocial(plays, userId) {
@@ -576,9 +576,10 @@ app.get('/api/lineups', (req, res) => {
   res.json({ ...w, lineups: out, popular });
 });
 
-// ---------- the Arcade: Call It, Daily, rooms, Ref Court, takes, duels, aura, wrapped, alerts (src/arcade.js) ----------
+// ---------- the Arcade: Call It, Daily, rooms, takes, duels, aura, wrapped, alerts (src/arcade.js) ----------
 arcade.mount(app, { needUser, pricedSlate, send: (event, data) => send(event, data) });
 arcadePlus.mount(app, { needUser }); // props, moment cards, red zone alerts, the locker
+arcadeFun.mount(app, { send: (event, data) => send(event, data) }); // hype meter, spoiler shield
 
 // ---------- live push (Server-Sent Events) ----------
 const clients = new Set();

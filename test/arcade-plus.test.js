@@ -50,3 +50,11 @@ test('Levels grow with XP', () => {
   assert.equal(plus.levelOf(160), 3);
   assert.equal(plus.xpFor(5), 640);
 });
+
+test('Hype: touchdowns count most, and the meter cools off', () => {
+  const fun = require('../src/arcade-fun');
+  const td = fun.playWeight({ td: true, explosive: true, yards: 45, players: [{ ppr: 10.5, role: 'receiver' }] });
+  const run = fun.playWeight({ yards: 3, players: [{ ppr: 0.3, role: 'rusher' }] });
+  assert.ok(td > 50 && run < 5, `${td} vs ${run}`);
+  engine.games.set('h1', { id: 'h1', state: 'in', week: null, home: { abbr: 'A' }, away: { abbr: 'B' } });
+});

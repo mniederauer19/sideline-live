@@ -237,7 +237,6 @@ function xpOf(userId) {
     callit: n("SELECT COUNT(*) n FROM callit WHERE user_id=? AND result IN ('win','loss')", userId) * 2 + n("SELECT COUNT(*) n FROM callit WHERE user_id=? AND result='win'", userId) * 5,
     daily: n('SELECT COUNT(*) n FROM daily_results WHERE user_id=? AND solved=1', userId) * 25,
     takes: n('SELECT COUNT(*) n FROM takes WHERE user_id=?', userId) * 10 + n("SELECT COUNT(*) n FROM takes WHERE user_id=? AND result='hit'", userId) * 40,
-    court: n('SELECT COUNT(*) n FROM court_votes WHERE user_id=?', userId) * 2,
     duels: n('SELECT COUNT(*) n FROM duels WHERE (from_user=? OR to_user=?) AND to_user IS NOT NULL', userId, userId) * 15
       + n("SELECT COUNT(*) n FROM duels WHERE (from_user=? AND result='from') OR (to_user=? AND result='to')", userId, userId) * 40,
     props: n('SELECT COUNT(*) n FROM prop_slips WHERE user_id=?', userId) * 10 + n("SELECT COUNT(*) n FROM prop_slips WHERE user_id=? AND result='win'", userId) * 50,

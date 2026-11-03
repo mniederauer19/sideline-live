@@ -328,6 +328,7 @@
 
   // ---------- games strip ----------
   function setGames(list) {
+    if (window.SL?.hooks?.shieldGames) list = window.SL.hooks.shieldGames(list); // spoiler shield
     S.games = list;
     S.gamesById = new Map(list.map((g) => [g.id, g]));
     renderStrip();
@@ -495,8 +496,7 @@
     const picker = S.pickerFor === p.id
       ? `<span class="picker">${EMOJIS.map((e) => `<button data-act="react" data-id="${esc(p.id)}" data-e="${e}" aria-label="React ${e}">${e}</button>`).join('')}</span>`
       : `<button class="react add" data-act="picker" data-id="${esc(p.id)}" aria-label="Add reaction">React</button>`;
-    const xtra = window.SL?.hooks || {};
-    return `<div class="act-wrap" data-social="${esc(p.id)}">${xtra.court ? xtra.court(p) : ''}<div class="actions">
+    return `<div class="act-wrap" data-social="${esc(p.id)}"><div class="actions">
       <span class="vote" role="group" aria-label="Rate this play">
         <button class="up ${s.myVote === 1 ? 'on' : ''}" data-act="vote" data-id="${esc(p.id)}" data-v="1" aria-label="Upvote">▲</button>
         <span class="n">${s.score}</span>
@@ -667,6 +667,7 @@
     if (append && S.feed.next) qs.set('before', S.feed.next);
     try {
       const r = await api(`/api/feed?${qs}`);
+      if (window.SL?.hooks?.shieldPlays) r.plays = window.SL.hooks.shieldPlays(r.plays); // spoiler shield
       S.feed.plays = append ? S.feed.plays.concat(r.plays) : r.plays;
       notePlays(r.plays);
       renderLive();
@@ -734,7 +735,7 @@
     const aside = isCurrentWeek() ? 'Standard PPR · updated every play<br>Plays from ESPN · season stats from nflverse'
       : `Standard PPR · ${games} games${done && done < games ? `, ${done} final` : done ? ', all final' : ''}<br>Plays from ESPN · season stats from nflverse`;
     const modeSeg = `<div class="feed-modes"><span class="fmt-seg mode-seg" role="radiogroup" aria-label="Layout"><button type="button" class="${S.feed.mode !== 'swipe' ? 'on' : ''}" data-act="feedmode" data-v="list">List</button><button type="button" class="${S.feed.mode === 'swipe' ? 'on' : ''}" data-act="feedmode" data-v="swipe">Swipe</button></span>
-      <button type="button" class="pill just-mine ${S.feed.filter === 'team' ? 'on' : ''}" data-act="justmine" title="Only plays from players on your synced teams">Just my players</button></div>`;
+      <button type="button" class="pill just-mine ${S.feed.filter === 'team' ? 'on' : ''}" data-act="justmine" title="Only plays from players on your synced teams">Just my players</button>${window.SL?.hooks?.feedTools ? window.SL.hooks.feedTools() : ''}</div>`;
     view.innerHTML = `${pageHead(`${weekLabel()}${isCurrentWeek() ? ' · Live' : ''}`, 'Every play, in PPR', `${aside}<div class="fmt-row">${fmtSeg()}</div>`)}<section id="liveNow" class="live-now" hidden></section>${modeSeg}${filterTabs()}<div class="feed" id="feedList"></div>`;
     renderLive();
     loadFeed();
@@ -1383,8 +1384,7 @@
     for (const p of targets) {
       const mine = p.social?.mine || [];
       const myVote = p.social?.myVote || 0;
-      const court = social.court ? { ...social.court, mine: keepMine ? p.social?.court?.mine || 0 : social.court.mine || 0 } : p.social?.court;
-      p.social = { ...social, mine: keepMine ? mine : social.mine, myVote: keepMine ? myVote : social.myVote, ...(court ? { court } : {}) };
+      p.social = { ...social, mine: keepMine ? mine : social.mine, myVote: keepMine ? myVote : social.myVote };
     }
     rerenderActions(id);
   }
@@ -1709,7 +1709,7 @@
     S, api, esc, fmt, signed, money, toast, openSheet, closeSheet, requireUser, tlogo, logoSrc, face, avatarHtml, userTag, profileUrl,
     pageHead, skel, markEnter, refreshAnim, swap, tween, teamInfo, primaryOf, adj, adjToday, unit, playCard, isMine, findPlay,
     currentRoute, kick, kickoff, ago, loadLeagues, lgMine, lgLineup, lgPid, lgWeek, weekLabel, isCurrentWeek, onMainSite, mainGet,
-    openComments, openPlayer, renderFeedList, renderLive, loadMe, renderMe, renderSide, refreshGames, glideSoon, ls, calm, API,
+    openComments, openPlayer, renderFeedList, renderLive, loadFeed, loadMe, renderMe, renderSide, refreshGames, glideSoon, ls, calm, API,
   });
   window.SL.routes ||= {}; window.SL.acts ||= {}; window.SL.hooks ||= {};
   window.SL.ready?.();

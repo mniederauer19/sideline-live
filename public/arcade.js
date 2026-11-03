@@ -1,4 +1,4 @@
-/* sideline live: the Arcade. Call It, Sideline Daily, league rooms, Ref Court, hot takes, duels,
+/* sideline live: the Arcade. Call It, Sideline Daily, league rooms, hot takes, duels,
    aura, Wrapped, the House, weekly challenges, share cards and phone alerts.
    Uses the helpers app.js shares on window.SL. Free to play: credits only. */
 (() => {
@@ -20,7 +20,7 @@
   const timeLeft = (ms) => { const s = Math.max(0, Math.round(ms / 1000)); const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m`; };
 
   // Which tab lights up for each page
-  SL.navFor = { props: 'arcade', cards: 'arcade', trade: 'arcade', locker: 'arcade', arcade: 'arcade', daily: 'arcade', takes: 'arcade', court: 'arcade', aura: 'arcade', duels: 'arcade', duel: 'arcade', house: 'arcade', wrapped: 'arcade', room: 'leagues', play: 'feed' };
+  SL.navFor = { props: 'arcade', cards: 'arcade', trade: 'arcade', locker: 'arcade', arcade: 'arcade', daily: 'arcade', takes: 'arcade', aura: 'arcade', duels: 'arcade', duel: 'arcade', house: 'arcade', wrapped: 'arcade', room: 'leagues', play: 'feed' };
 
   // ================= confetti =================
   function confetti(el, n = 22) {
@@ -135,46 +135,6 @@
     return `<a class="badge aura ${a > 0 ? 'up' : 'down'}" href="#/aura" title="Aura: points for big moments, lost for fumbles, picks and misses">${a > 0 ? '+' : '−'}${Math.abs(a)} aura</a>`;
   };
 
-  // ================= REF COURT =================
-  const COURT_RX = /REVERSED|challenge|replay|upheld|overturned/i;
-  const flagged = (t) => /PENALTY/.test(t) && !/^[^]*PENALTY[^.]*declined[^]*$/i.test(t) || /pass interference|roughing/i.test(t) && !/declined/i.test(t);
-  const courtEligible = (p) => !!p && (p.nullified || p.kind === 'penalty' || COURT_RX.test(p.text || '') || flagged(p.text || ''));
-  SL.hooks.court = (p) => {
-    if (!courtEligible(p)) return '';
-    const c = p.social?.court || { good: 0, bad: 0, mine: 0 };
-    const tot = c.good + c.bad, pct = (n) => (tot ? `${Math.round(n / tot * 100)}%` : '');
-    const why = /REVERSED|overturned/i.test(p.text || '') ? 'Overturned on review' : /challenge|replay|upheld/i.test(p.text || '') ? 'Replay review' : 'Flag on the play';
-    return `<div class="court" role="group" aria-label="Ref Court"><span class="ct-lbl">🦓 Ref Court <small>${why}</small></span>
-      <button type="button" class="ct-btn good ${c.mine === 1 ? 'on' : ''}" data-act="court" data-id="${esc(p.id)}" data-v="1">Good call <b>${pct(c.good)}</b></button>
-      <button type="button" class="ct-btn bad ${c.mine === -1 ? 'on' : ''}" data-act="court" data-id="${esc(p.id)}" data-v="-1">Robbery <b>${pct(c.bad)}</b></button>
-      ${tot ? `<span class="ct-n">${tot} vote${tot > 1 ? 's' : ''}</span>` : ''}</div>`;
-  };
-  function setCourt(id, court, keepMine) {
-    const p = SL.findPlay(id) || (S.courtPlays || []).find((x) => x.id === id);
-    if (!p) return;
-    const mine = p.social?.court?.mine || 0;
-    p.social = { ...(p.social || { reactions: {}, mine: [], score: 0, myVote: 0, comments: 0 }), court: { ...court, mine: keepMine ? mine : court.mine } };
-    document.querySelectorAll(`[data-social="${CSS.escape(id)}"] .court`).forEach((el) => { el.outerHTML = SL.hooks.court(p); });
-  }
-  SL.acts.court = async (t) => {
-    if (!requireUser()) return;
-    const id = t.dataset.id;
-    const p = SL.findPlay(id) || (S.courtPlays || []).find((x) => x.id === id);
-    const cur = p?.social?.court?.mine || 0;
-    const v = Number(t.dataset.v) === cur ? 0 : Number(t.dataset.v);
-    const r = await api(`/api/plays/${encodeURIComponent(id)}/court`, { method: 'POST', body: { value: v } });
-    setCourt(id, r.court, false);
-    buzz(10);
-  };
-  async function showCourt() {
-    view.innerHTML = `${pageHead(SL.weekLabel(), 'Ref Court', 'Flags and replay reviews this week<br>You make the call: good call or robbery?')}<div class="feed" id="courtList">${skel(4, 'cards')}</div>`;
-    const r = await api(`/api/court${S.sel ? `?week=${S.sel}` : ''}`);
-    S.courtPlays = r.plays.map((p) => ({ ...p, social: { reactions: {}, mine: [], score: 0, myVote: 0, comments: 0, ...(p.social || {}), court: p.court } }));
-    S.feed.plays = S.courtPlays;
-    const el = $('#courtList'); if (!el) return;
-    el.innerHTML = S.courtPlays.length ? S.courtPlays.map((p) => SL.playCard(p, { full: true })).join('') : '<div class="empty"><b>No flags or reviews yet this week</b>Every penalty and replay review lands here for a vote.</div>';
-    refreshAnim(el);
-  }
 
   // ================= SHARE CARDS =================
   const W = 1080, H = 1920;
@@ -317,6 +277,12 @@
   function saveCanvas(canvas, filename) {
     canvas.toBlob((b) => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = filename || 'sideline.png'; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500); }, 'image/png');
   }
+  SL.card = { W, H, frame, circleImg, pill, wrap, loadImg, fontsReady, initialsOf, css, saveCanvas, suggestFor: (p) => suggest(p),
+    shareFile: async (file, { text, url } = {}) => {
+      if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], text: [text, url].filter(Boolean).join(' ') }); return true; } catch (e) { if (e.name === 'AbortError') return true; } }
+      const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = file.name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+      return false;
+    } };
   async function copy(text) { try { await navigator.clipboard.writeText(text); toast('Link copied.'); } catch { prompt('Copy this link', text); } }
   // Who a play hurts or helps on your synced teams
   function oppIds() {
@@ -337,7 +303,7 @@
   }
   SL.acts.share = async (t) => {
     const id = t.dataset.id;
-    let p = SL.findPlay(id) || (S.courtPlays || []).find((x) => x.id === id) || S.roomPlays?.find((x) => x.id === id);
+    let p = SL.findPlay(id) || S.roomPlays?.find((x) => x.id === id);
     if (!p) { try { p = (await api(`/api/plays/${encodeURIComponent(id)}`)).play; } catch { return toast('Play not found.'); } }
     const st = { ...suggest(p) };
     openSheet('Share this play', `<div class="share-wrap"><div class="share-prev" id="shPrev">${skel(1, 'cards')}</div>
@@ -345,7 +311,7 @@
         <span class="fmt-seg sh-style" role="radiogroup" aria-label="Card style"><button type="button" data-st="hype" class="${st.style === 'hype' ? 'on' : ''}">Hype</button><button type="button" data-st="badbeat" class="${st.style === 'badbeat' ? 'on' : ''}">Bad beat 💀</button></span>
         <label class="label" for="shCap">Caption on the card</label>
         <input id="shCap" maxlength="44" placeholder="${st.style === 'badbeat' ? 'lost my matchup by 0.3 on this 💀' : 'say something (optional)'}" value="${esc(st.caption)}">
-        <div class="share-btns"><button class="btn" type="button" id="shGo">Share</button><button class="btn ghost" type="button" id="shSave">Save image</button><button class="btn ghost" type="button" id="shLink">Copy link</button></div>
+        <div class="share-btns"><button class="btn" type="button" id="shGo">Share</button><button class="btn ghost" type="button" id="shSave">Save image</button><button class="btn ghost" type="button" id="shLink">Copy link</button>${SL.hooks.shareExtra ? SL.hooks.shareExtra(p) : ''}</div>
         <p class="rules">Sized for TikTok, Instagram and Snapchat stories (9:16).</p>
       </div></div>`);
     let canvas = null, tok = 0;
@@ -778,7 +744,6 @@
         ${tile('#/props', '🎯', 'Player props', 'Pick 2 to 5 More or Less. All hit and win up to +600.', '')}
         ${tile('#/cards', '🃏', 'Moment cards', 'Collect the week\'s biggest plays. Open packs, swap with friends.', '')}
         ${tile('#/takes', '🌶️', 'Hot takes', 'Post a take, get voted W or L, collect receipts.', ch?.takes ? `Your receipts: ${ch.takes.hit}-${ch.takes.miss}` : '')}
-        ${tile('#/court', '🦓', 'Ref Court', 'Every flag and review: good call or robbery?', '')}
         ${tile('#/aura', '✨', 'Aura', 'Who\'s got it, and who\'s cooked this week.', '')}
         ${tile('#/duels', '⚔️', 'Duels', 'Your lineup vs. a friend\'s, from one link.', '')}
         ${tile('#/house', '🏠', 'Beat the House', 'The best projected lineup under the cap. Beat it.', '')}
@@ -850,7 +815,7 @@
       if (!key) return false;
       let sub = await reg.pushManager.getSubscription();
       if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(key) });
-      await api('/api/push/subscribe', { method: 'POST', body: { sub: sub.toJSON(), players: [...S.myFantasyIds], base: pageBase(), prefs: { redzone: ls.get('sl-rz') || 'mine' } } });
+      await api('/api/push/subscribe', { method: 'POST', body: { sub: sub.toJSON(), players: [...S.myFantasyIds], base: pageBase(), prefs: { redzone: ls.get('sl-rz') || 'mine', delay: Number(ls.get('sl-delay')) || 0 } } });
       ls.set('sl-push', '1');
       return true;
     } catch { return false; }
@@ -878,7 +843,6 @@
     });
     es.addEventListener('callit_n', (e) => { const d = j(e); const g = S.call.games[d.gameId]; if (g) { g.counts = d.counts; drawCalls(d.gameId); } });
     es.addEventListener('callit', (e) => { const d = j(e); const g = S.call.games[d.gameId]; if (g?.last?.result === 'pending' || g?.mine) loadCallsSoon(200); });
-    es.addEventListener('court', (e) => { const d = j(e); setCourt(d.id, d.court, true); });
     es.addEventListener('room', (e) => { const d = j(e); if (SL.currentRoute() === 'room' && S.room.id === d.room) loadRoomMsgs(); });
     es.addEventListener('takes', () => { if (SL.currentRoute() === 'takes' && S.takes.tab === 'fresh') { clearTimeout(S.takes.t); S.takes.t = setTimeout(loadTakes, 1500); } });
     es.addEventListener('play', (e) => {
@@ -896,7 +860,7 @@
 
   // ================= routes =================
   Object.assign(SL.routes, {
-    arcade: showArcade, daily: showDaily, takes: showTakes, court: showCourt, aura: showAura,
+    arcade: showArcade, daily: showDaily, takes: showTakes, aura: showAura,
     duels: showDuels, duel: showDuel, house: showHouse, wrapped: showWrapped, room: showRoom,
   });
   void markEnter;
