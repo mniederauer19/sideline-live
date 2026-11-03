@@ -1336,6 +1336,7 @@
   async function showRanks() {
     const r = await api('/api/leaderboard');
     view.innerHTML = `${pageHead('Season · free picks', 'Ranks', 'Ranked by credits<br>Everyone starts with 1,000')}
+      <div class="rk-tools"><a class="pill" href="#/people">👥 Friends leaderboard</a><a class="pill" href="#/people">🔍 Find people</a></div>
       <table class="box ranks"><thead><tr><th style="width:44px">#</th><th>Player</th><th class="num">Record</th><th class="num">Credits</th></tr></thead><tbody>
       ${r.rows.map((u) => `<tr class="${u.me ? 'me' : ''}"><td>${u.rank}</td><td><div class="nm rk-who">${u.profile ? avatarHtml(u.profile, 26) : ''}${userTag(u.profile, u.name)}</div><div class="tier">${esc(u.tier)}</div></td><td class="num">${u.record.w}-${u.record.l}${u.record.p ? `-${u.record.p}` : ''}</td><td class="num pp">${u.credits.toLocaleString()}</td></tr>`).join('')
         || '<tr><td colspan="4" class="sub">No one has joined yet.</td></tr>'}

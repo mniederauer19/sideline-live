@@ -514,3 +514,18 @@ a.un-plain { color: inherit; }
   .pf-cards { grid-template-columns: repeat(2, 1fr); }
   .pf-s b { font-size: 24px; }
 }
+
+/* ---------- friends + find people ---------- */
+.pp-search { margin-bottom: 18px; }
+.pp-search input { width: 100%; padding: 13px 18px; border-radius: 14px; border: 1px solid var(--gold); background: none; color: var(--ink); font: 500 16px/1.2 var(--body); }
+#ppRes .pp-list { margin-top: 10px; }
+.pp-list { border: 1px solid var(--line); border-radius: 14px; background: var(--card); padding: 2px 14px; }
+.pp-person { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.pp-person:last-child { border-bottom: 0; }
+.pp-pinfo { flex: 1; min-width: 140px; }
+.pp-pinfo small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.btn.sm { padding: 8px 13px; font-size: 10.5px; }
+.rk-tools { display: flex; gap: 8px; margin: 0 0 14px; flex-wrap: wrap; }
+.me-btn[data-req] { position: relative; }
+.me-btn[data-req]::after { content: ''; position: absolute; top: -2px; right: -2px; width: 10px; height: 10px; border-radius: 50%; background: var(--live); border: 2px solid var(--bg); }
+#ppRes .rules { margin-top: 10px; }

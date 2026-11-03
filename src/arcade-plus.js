@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS cards (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id 
 CREATE INDEX IF NOT EXISTS cards_user ON cards(user_id);
 CREATE TABLE IF NOT EXISTS card_trades (id INTEGER PRIMARY KEY AUTOINCREMENT, code TEXT NOT NULL UNIQUE, from_user INTEGER NOT NULL, card_id INTEGER NOT NULL, to_user INTEGER, offer_card_id INTEGER, status TEXT NOT NULL, created_at INTEGER NOT NULL);
 CREATE TABLE IF NOT EXISTS locker (user_id INTEGER PRIMARY KEY, frame TEXT, theme TEXT, team TEXT, tag TEXT);
+CREATE TABLE IF NOT EXISTS friends (id INTEGER PRIMARY KEY AUTOINCREMENT, from_user INTEGER NOT NULL, to_user INTEGER NOT NULL, status TEXT NOT NULL, created_at INTEGER NOT NULL, accepted_at INTEGER, UNIQUE (from_user, to_user));
 `);
 {
   const INT = 'BIGINT', TXT = 'TEXT';
@@ -30,6 +31,7 @@ CREATE TABLE IF NOT EXISTS locker (user_id INTEGER PRIMARY KEY, frame TEXT, them
     cards: { pk: ['id'], cols: { id: INT, user_id: INT, play_id: TXT, rarity: TXT, season: INT, week: INT, data: TXT, pack_id: INT, earned_at: INT } },
     card_trades: { pk: ['id'], cols: { id: INT, code: TXT, from_user: INT, card_id: INT, to_user: INT, offer_card_id: INT, status: TXT, created_at: INT } },
     locker: { pk: ['user_id'], cols: { user_id: INT, frame: TXT, theme: TXT, team: TXT, tag: TXT } },
+    friends: { pk: ['id'], cols: { id: INT, from_user: INT, to_user: INT, status: TXT, created_at: INT, accepted_at: INT } },
   });
 }
 const code = () => { const C = 'abcdefghjkmnpqrstuvwxyz23456789'; let s = ''; for (const b of crypto.randomBytes(7)) s += C[b % C.length]; return s; };
@@ -264,8 +266,70 @@ function lockerOf(userId, fresh = false) {
 // Everyone sees your name tag style next to your name in the Arcade
 A.whoExtras.push((id) => { const l = lockerOf(id); return { tag: l.equipped.tag, level: l.level }; });
 
+// ======================= FRIENDS =======================
+// A request goes from one person to another; once accepted they're friends both ways.
+const linkOf = (a, b) => db.prepare('SELECT * FROM friends WHERE (from_user=? AND to_user=?) OR (from_user=? AND to_user=?)').get(a, b, b, a);
+function friendStatus(me, other) {
+  if (!me) return 'none';
+  if (me === other) return 'self';
+  const l = linkOf(me, other);
+  if (!l) return 'none';
+  if (l.status === 'accepted') return 'friends';
+  return l.from_user === me ? 'sent' : 'received';
+}
+const friendIds = (me) => db.prepare("SELECT CASE WHEN from_user=? THEN to_user ELSE from_user END id FROM friends WHERE status='accepted' AND (from_user=? OR to_user=?)").all(me, me, me).map((r) => r.id);
+const userByName = (name) => db.prepare('SELECT * FROM users WHERE name=? COLLATE NOCASE').get(name)
+  || db.prepare("SELECT * FROM users WHERE json_extract(profile, '$.username')=? COLLATE NOCASE").get(name);
+
 // ======================= routes =======================
 function mount(app, { needUser, tier, record, rankOf }) {
+  // ---- look people up ----
+  app.get('/api/users/search', (req, res) => {
+    const q = String(req.query.q || '').trim().replace(/[%_]/g, '').slice(0, 30);
+    if (q.length < 2) return res.json({ users: [] });
+    const rows = db.prepare(`SELECT id, name, credits, profile FROM users WHERE name LIKE ? OR json_extract(profile, '$.username') LIKE ?
+      ORDER BY (name LIKE ?) DESC, credits DESC LIMIT 20`).all(`%${q}%`, `%${q}%`, `${q}%`);
+    res.json({ users: rows.map((u) => ({ ...A.who(u.id), name: u.name, credits: u.credits, record: record(u.id), friend: friendStatus(req.user?.id, u.id) })) });
+  });
+
+  // ---- friends ----
+  app.get('/api/friends', needUser, (req, res) => {
+    const me = req.user.id;
+    const view = (id) => { const u = db.prepare('SELECT id, name, credits FROM users WHERE id=?').get(id); return u ? { ...A.who(id), name: u.name, credits: u.credits, record: record(id), tier: tier(u.credits) } : null; };
+    const friends = friendIds(me).map(view).filter(Boolean).sort((a, b) => b.credits - a.credits);
+    const incoming = db.prepare("SELECT from_user id FROM friends WHERE to_user=? AND status='pending' ORDER BY id DESC").all(me).map((r) => view(r.id)).filter(Boolean);
+    const outgoing = db.prepare("SELECT to_user id FROM friends WHERE from_user=? AND status='pending' ORDER BY id DESC").all(me).map((r) => view(r.id)).filter(Boolean);
+    const mine = view(me);
+    const board = [...friends, { ...mine, me: true }].sort((a, b) => b.credits - a.credits).map((x, i) => ({ ...x, rank: i + 1 }));
+    res.json({ friends, incoming, outgoing, board });
+  });
+  const friendAction = (req, res, fn) => {
+    const other = userByName(String(req.params.name || ''));
+    if (!other) return res.status(404).json({ error: 'No one by that name on Sideline Live.' });
+    if (other.id === req.user.id) return res.status(400).json({ error: 'That\'s you.' });
+    const msg = fn(other, linkOf(req.user.id, other.id));
+    if (msg?.error) return res.status(400).json(msg);
+    A.send('friends', { userId: other.id, from: req.user.name, kind: msg?.kind || 'update' });
+    res.json({ friend: friendStatus(req.user.id, other.id), name: other.name, ...(msg || {}) });
+  };
+  // add a friend (or accept, if they already asked you)
+  app.post('/api/friends/:name', needUser, (req, res) => friendAction(req, res, (other, l) => {
+    if (l?.status === 'accepted') return { kind: 'none' };
+    if (l && l.from_user === other.id) { db.prepare("UPDATE friends SET status='accepted', accepted_at=? WHERE id=?").run(Date.now(), l.id); persist.upsert('friends', { id: l.id }); return { kind: 'accepted' }; }
+    if (l) return { kind: 'none' };
+    const out = db.prepare("SELECT COUNT(*) n FROM friends WHERE from_user=? AND status='pending'").get(req.user.id).n;
+    if (out >= 50) return { error: 'You have 50 requests waiting. Give people a minute to answer.' };
+    const info = db.prepare("INSERT INTO friends (from_user, to_user, status, created_at) VALUES (?,?,'pending',?)").run(req.user.id, other.id, Date.now());
+    persist.upsert('friends', { id: Number(info.lastInsertRowid) });
+    return { kind: 'request' };
+  }));
+  // turn down a request, cancel yours, or unfriend
+  app.delete('/api/friends/:name', needUser, (req, res) => friendAction(req, res, (other, l) => {
+    if (!l) return { kind: 'none' };
+    db.prepare('DELETE FROM friends WHERE id=?').run(l.id); persist.remove('friends', { id: l.id });
+    return { kind: 'removed' };
+  }));
+
   // ---- public profiles on Live: everything someone has done here ----
   app.get('/api/u/:name', (req, res) => {
     const name = String(req.params.name || '').slice(0, 40);
@@ -299,6 +363,7 @@ function mount(app, { needUser, tier, record, rankOf }) {
       props: { w: n("SELECT COUNT(*) n FROM prop_slips WHERE user_id=? AND result='win'", id), l: n("SELECT COUNT(*) n FROM prop_slips WHERE user_id=? AND result='loss'", id) },
       badges: db.prepare('SELECT badge, label, earned_at FROM badges WHERE user_id=? ORDER BY earned_at DESC').all(id),
       level: l.level, xp: l.xp, cardCount: cards.length, showcase: cards.slice(0, 3), lineup,
+      friend: friendStatus(req.user?.id, id), friends: friendIds(id).length,
     });
   });
 

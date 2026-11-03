@@ -363,8 +363,8 @@
     const since = u.joined ? new Date(u.joined).toLocaleDateString([], { month: 'short', year: 'numeric' }) : '';
     el.innerHTML = `<section class="pf-head">${avatarHtml(pr || { username: u.name }, 84)}
         <div class="pf-id"><div class="pf-name">${SL.nameTag({ name: u.name, profile: pr, tag: u.tag, level: u.level })}</div>
-          <div class="sub">${[pr?.title, `Live level ${u.level}`, since ? `on Live since ${since}` : ''].filter(Boolean).map(esc).join(' · ')}</div>
-          <div class="share-btns">${main ? `<a class="btn ghost" href="${esc(main)}">sidelineff.com profile ↗</a>` : ''}${u.me ? '<a class="btn ghost" href="#/locker">Locker</a><a class="btn ghost" href="/account">Edit profile</a>' : ''}<button class="btn ghost" type="button" data-act="pf-share">Share profile</button></div></div></section>
+          <div class="sub">${[pr?.title, `Live level ${u.level}`, `${u.friends} friend${u.friends === 1 ? '' : 's'}`, since ? `on Live since ${since}` : ''].filter(Boolean).map(esc).join(' · ')}</div>
+          <div class="share-btns">${main ? `<a class="btn ghost" href="${esc(main)}">sidelineff.com profile ↗</a>` : ''}${u.me ? '<a class="btn ghost" href="#/locker">Locker</a><a class="btn ghost" href="/account">Edit profile</a><a class="btn ghost" href="#/people">Friends</a>' : friendBtn(u.friend, u.name)}<button class="btn ghost" type="button" data-act="pf-share">Share profile</button></div></div></section>
       <div class="pf-grid">
         ${stat(u.credits.toLocaleString(), 'Credits', `#${u.rank} · ${esc(u.tier)}`)}
         ${stat(`${rec.w}-${rec.l}${rec.p ? `-${rec.p}` : ''}`, 'Winner picks', pct(rec.w, rec.l))}
@@ -384,6 +384,87 @@
   }
   SL.acts['pf-share'] = () => shareLink(linkTo(`#/u/${encodeURIComponent(S.pfName || '')}`), `${S.pfName} on Sideline Live`);
   SL.navFor.u = 'ranks';
+  SL.navFor.people = 'ranks';
 
-  Object.assign(SL.routes, { props: showProps, cards: showCards, trade: showTrade, locker: showLocker, u: showProfile });
+  // ================= FRIENDS + FIND PEOPLE =================
+  const FRIEND_LABEL = { none: '➕ Add friend', sent: 'Request sent', received: '✓ Accept friend request', friends: '✓ Friends' };
+  function friendBtn(status, name) {
+    if (!status || status === 'self') return '';
+    return `<button type="button" class="btn ${status === 'none' || status === 'received' ? '' : 'ghost'} fr-btn" data-act="friend" data-name="${esc(name)}" data-s="${status}">${FRIEND_LABEL[status]}</button>`;
+  }
+  SL.acts.friend = async (t) => {
+    if (!requireUser()) return;
+    const { name, s: st } = t.dataset;
+    if (st === 'friends' && !confirm(`Remove ${name} from your friends?`)) return;
+    if (st === 'sent' && !confirm(`Cancel your friend request to ${name}?`)) return;
+    try {
+      const r = await api(`/api/friends/${encodeURIComponent(name)}`, { method: st === 'none' || st === 'received' ? 'POST' : 'DELETE' });
+      document.querySelectorAll(`.fr-btn[data-name="${CSS.escape(name)}"]`).forEach((b) => { b.outerHTML = friendBtn(r.friend, name); });
+      toast(r.kind === 'request' ? `Friend request sent to ${name}.` : r.kind === 'accepted' ? `You and ${name} are friends now.` : r.friend === 'none' ? (st === 'friends' ? `Removed ${name}.` : 'Request cancelled.') : 'Done.');
+      if (SL.currentRoute() === 'people') loadFriends();
+      checkRequests();
+    } catch (e) { toast(e.message); }
+  };
+  SL.acts['fr-no'] = async (t) => {
+    try { await api(`/api/friends/${encodeURIComponent(t.dataset.name)}`, { method: 'DELETE' }); toast('Request declined.'); loadFriends(); checkRequests(); } catch (e) { toast(e.message); }
+  };
+  const personRow = (u, extra = '') => `<div class="pp-person">${avatarHtml(u.profile || { username: u.name }, 38)}<div class="pp-pinfo">${SL.nameTag(u)}<small>${u.credits != null ? `${u.credits.toLocaleString()} credits` : ''}${u.record ? ` · ${u.record.w}-${u.record.l} picks` : ''}</small></div>${extra}</div>`;
+  async function showPeople() {
+    view.innerHTML = `${pageHead('Find people', 'Friends', 'Look anyone up by username<br>Add friends and see how you stack up')}
+      <div class="pp-search"><input id="ppQ" type="search" autocomplete="off" placeholder="Search usernames" aria-label="Search usernames"><div id="ppRes"></div></div>
+      <div id="frBody">${S.me ? skel(3, 'rows') : '<div class="empty"><b>Sign in to add friends</b>You can still look people up above. <a href="#" data-act="join">Sign in</a></div>'}</div>`;
+    const q = $('#ppQ');
+    let t;
+    q.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => search(q.value), 220); });
+    if (!matchMedia('(max-width: 720px)').matches) q.focus();
+    if (S.me) loadFriends();
+  }
+  async function search(text) {
+    const el = $('#ppRes'); if (!el) return;
+    const v = text.trim();
+    if (v.length < 2) { el.innerHTML = ''; return; }
+    try {
+      const r = await api(`/api/users/search?q=${encodeURIComponent(v)}`);
+      if (($('#ppQ')?.value || '').trim() !== v) return;
+      el.innerHTML = r.users.length ? `<div class="pp-list">${r.users.map((u) => personRow(u, `<a class="btn ghost sm" href="#/u/${encodeURIComponent(u.name)}">Profile</a>${friendBtn(u.friend, u.name)}`)).join('')}</div>` : `<p class="rules">No one named “${esc(v)}” on Sideline Live yet.</p>`;
+    } catch (e) { el.innerHTML = `<p class="rules">${esc(e.message)}</p>`; }
+  }
+  async function loadFriends() {
+    const el = $('#frBody'); if (!el || !S.me) return;
+    let r; try { r = await api('/api/friends'); } catch (e) { el.innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
+    if (!$('#frBody')) return;
+    el.innerHTML = `${r.incoming.length ? `<section class="pf-sec"><div class="label">Friend requests · ${r.incoming.length}</div><div class="pp-list">${r.incoming.map((u) => personRow(u, `<button class="btn sm" data-act="friend" data-name="${esc(u.name)}" data-s="received">Accept</button><button class="btn ghost sm" data-act="fr-no" data-name="${esc(u.name)}">Decline</button>`)).join('')}</div></section>` : ''}
+      <section class="pf-sec"><div class="label">Friends leaderboard</div>${r.friends.length ? `<table class="box ranks"><thead><tr><th style="width:44px">#</th><th>Player</th><th class="num">Record</th><th class="num">Credits</th></tr></thead><tbody>
+        ${r.board.map((u) => `<tr class="${u.me ? 'me' : ''}"><td>${u.rank}</td><td><div class="nm rk-who">${avatarHtml(u.profile || { username: u.name }, 26)}${SL.nameTag(u)}</div><div class="tier">${esc(u.tier || '')}</div></td><td class="num">${u.record.w}-${u.record.l}${u.record.p ? `-${u.record.p}` : ''}</td><td class="num pp">${u.credits.toLocaleString()}</td></tr>`).join('')}
+        </tbody></table>` : '<p class="rules">No friends yet. Search for someone above and tap Add friend. When they accept, you\'ll both show up here.</p>'}</section>
+      ${r.outgoing.length ? `<section class="pf-sec"><div class="label">Requests you sent</div><div class="pp-list">${r.outgoing.map((u) => personRow(u, friendBtn('sent', u.name))).join('')}</div></section>` : ''}`;
+  }
+  // a dot on your name when someone wants to be your friend
+  async function checkRequests() {
+    if (!S.me) return;
+    try { const r = await api('/api/friends'); $('#meBtn')?.toggleAttribute('data-req', r.incoming.length > 0); S.friendReqs = r.incoming.length; } catch { /* ignore */ }
+  }
+  setTimeout(checkRequests, 2500);
+  const prevAcct = SL.hooks.account;
+  SL.hooks.account = async () => {
+    await prevAcct?.();
+    const links = $('.acct-links');
+    if (links && !links.querySelector('.acct-fr')) links.insertAdjacentHTML('beforeend', `<a class="btn ghost acct-fr" href="#/people" data-close>Friends${S.friendReqs ? ` · ${S.friendReqs} new` : ''}</a>`);
+  };
+  const prevMore = SL.acts.navmore;
+  SL.acts.navmore = () => { prevMore?.(); $('.more-list')?.insertAdjacentHTML('afterbegin', `<a href="#/people" data-close><span>👥</span>Friends${S.friendReqs ? ` · ${S.friendReqs} new` : ''}<small>Find people, add friends, friends leaderboard</small></a>`); };
+  const prevStreamF = SL.hooks.stream;
+  SL.hooks.stream = (es) => {
+    prevStreamF?.(es);
+    es.addEventListener('friends', (e) => {
+      let d = {}; try { d = JSON.parse(e.data); } catch { return; }
+      if (!S.me || d.userId !== S.me.id) return;
+      if (d.kind === 'request') toast(`👥 ${d.from} sent you a friend request.`);
+      if (d.kind === 'accepted') toast(`👥 ${d.from} accepted your friend request.`);
+      checkRequests();
+      if (SL.currentRoute() === 'people') loadFriends();
+    });
+  };
+
+  Object.assign(SL.routes, { props: showProps, cards: showCards, trade: showTrade, locker: showLocker, u: showProfile, people: showPeople });
 })();
