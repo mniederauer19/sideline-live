@@ -494,11 +494,12 @@ function creatorsList() {
 
 // ======================= CHALLENGES + BADGES =======================
 const CH = {
-  underdogs: { label: 'Pick 3 underdogs to win', emoji: '🐶', goal: () => 3 },
-  streak5: { label: 'Hit a 5-play Call It streak', emoji: '🔥', goal: () => 5 },
-  daily3: { label: 'Solve 3 Sideline Dailies', emoji: '🧩', goal: () => 3 },
-  allwinners: { label: "Pick every game's winner", emoji: '🏈', goal: (r) => r.games.length },
-  comment3: { label: 'Comment on 3 plays', emoji: '💬', goal: () => 3 },
+  // Goals are about playing, not being right: a pick counts whether it wins or not.
+  underdogs: { label: 'Pick 2 underdogs (they don\'t have to win)', emoji: '🐶', goal: () => 2 },
+  streak5: { label: 'Call 3 plays in a row right in Call It', emoji: '🔥', goal: () => 3 },
+  daily3: { label: 'Solve 2 Sideline Dailies', emoji: '🧩', goal: () => 2 },
+  allwinners: { label: 'Make winner picks for 6 games', emoji: '🏈', goal: (r) => Math.min(6, r.games.length) },
+  comment3: { label: 'Comment on 2 plays', emoji: '💬', goal: () => 2 },
   take1: { label: 'Post a hot take', emoji: '🌶️', goal: () => 1 },
   duel1: { label: 'Start or accept a lineup duel', emoji: '⚔️', goal: () => 1 },
   lineup: { label: 'Save a salary-cap lineup', emoji: '📋', goal: () => 1 },
@@ -545,9 +546,11 @@ function challengesFor(userId, week = cur().week) {
     const have = userId ? progress(id, userId, week, r) : 0;
     return { id, label: CH[id].label, emoji: CH[id].emoji, goal, progress: Math.min(goal, have), done: have >= goal };
   });
-  const allDone = userId && list.length && list.every((c) => c.done);
+  // the badge takes 4 of the 5, so one tough challenge doesn't block it
+  const need = Math.max(1, list.length - 1);
+  const allDone = userId && list.length && list.filter((c) => c.done).length >= need;
   if (allDone) { award(userId, `grinder-${cur().season}-${week}`, `Week ${week} Grinder`); for (const i of [1, 2, 3]) earn(userId, 'grinder', `grinder-${cur().season}-${week}-${i}`); }
-  return { week, list, allDone: !!allDone };
+  return { week, list, need, allDone: !!allDone };
 }
 function checkBadges(userId) {
   try {

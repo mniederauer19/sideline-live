@@ -744,7 +744,7 @@
         ${tile('#/wrapped', '🎁', 'Wrapped', 'Your week in one card to post.', '')}
         ${tile('#/locker', '🔓', 'Locker', 'Level up to unlock card frames, colors and name tags.', '')}
       </div>
-      ${ch?.list?.length ? `<section class="ch-sec"><div class="ch-head"><div><div class="label">Week ${ch.week} challenges</div><h2>${ch.list.filter((c) => c.done).length}/${ch.list.length} done${ch.allDone ? ' 🏆' : ''}</h2></div><span class="sub">Finish all ${ch.list.length} for the Week ${ch.week} Grinder badge</span></div>
+      ${ch?.list?.length ? `<section class="ch-sec"><div class="ch-head"><div><div class="label">Week ${ch.week} challenges</div><h2>${ch.list.filter((c) => c.done).length}/${ch.list.length} done${ch.allDone ? ' 🏆' : ''}</h2></div><span class="sub">Finish any ${ch.need || ch.list.length} for the Week ${ch.week} Grinder badge and 3 card packs</span></div>
         ${ch.list.map((c) => `<div class="ch ${c.done ? 'done' : ''}"><span class="ch-e">${c.emoji}</span><span class="ch-l">${esc(c.label)}<i class="ch-bar"><i style="width:${c.progress / c.goal * 100}%"></i></i></span><b>${c.done ? '✓' : `${c.progress}/${c.goal}`}</b></div>`).join('')}
         ${S.me ? '' : '<p class="rules"><a href="#" data-act="join">Sign in</a> to track your progress and earn badges.</p>'}</section>` : ''}
       ${ch?.badges?.length ? `<section class="ch-sec"><div class="label">Your badges</div><div class="bdg-row">${ch.badges.map((b) => `<span class="bdg" title="Earned ${new Date(b.earned_at).toLocaleDateString()}">🏅 ${esc(b.label)}</span>`).join('')}</div></section>` : ''}`;
