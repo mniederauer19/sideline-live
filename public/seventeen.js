@@ -1,61 +1,173 @@
-/* sideline live: 17-0. Spin a team and a season (1970 to today), draft one player from that team
-   that year, fill 6 spots, then watch your lineup play a 17-game season. Builds on window.SL. */
+/* sideline live: 17-0. Spin a team and a decade (the '70s to today), draft one player's best season
+   with that team, fill 6 spots, then watch your lineup play a 17-game season.
+   Arcade look to match the games on sidelineff.com (Hail Mary): pixel stadium, pixel type, chunky buttons.
+   Builds on window.SL. */
 (() => {
   'use strict';
   const SL = window.SL;
   if (!SL) return;
-  const { S, api, esc, fmt, toast, pageHead, skel, tlogo } = SL;
+  const { S, api, esc, fmt, toast, tlogo } = SL;
   const $ = (q, el = document) => el.querySelector(q);
   const view = $('#view');
   const calm = SL.calm;
   const SLOTS = ['QB', 'RB1', 'WR1', 'WR2', 'TE', 'FLEX'];
   const LABEL = { QB: 'QB', RB1: 'RB', RB2: 'RB', WR1: 'WR', WR2: 'WR', TE: 'TE', FLEX: 'FLEX', SF: 'SUPERFLEX' };
   const FITS = { QB: ['QB'], RB1: ['RB'], RB2: ['RB'], WR1: ['WR'], WR2: ['WR'], TE: ['TE'], FLEX: ['RB', 'WR', 'TE'], SF: ['QB', 'RB', 'WR', 'TE'] };
-  const MODES = {
-    decades: ['📼', 'Start a season', 'Spin a team and a decade (the \'70s to today), take any player\'s best season with them. Play as many as you want.'],
-  };
   SL.navFor['170'] = 'arcade';
-  S.s17 = { run: null };
+  S.s17 = { run: null, st: null };
   const num = (v) => Number(v || 0).toLocaleString();
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   function statLine(p) {
     if (p.pos === 'QB') return [`${num(p.passYds)} pass yds`, `${p.passTd} TD`, `${p.int ?? 0} INT`, p.rushYds > 99 ? `${num(p.rushYds)} rush yds` : ''].filter(Boolean).join(' · ');
     if (p.pos === 'RB') return [`${num(p.rushYds)} rush yds`, `${p.rushTd + p.recTd} TD`, p.rec ? `${p.rec} rec, ${num(p.recYds)} yds` : ''].filter(Boolean).join(' · ');
     return [`${p.rec} rec`, `${num(p.recYds)} yds`, `${p.recTd} TD`].join(' · ');
   }
   const ini = (n) => String(n || '?').split(' ').map((w) => w[0]).join('').slice(0, 2);
-  function confetti(el) {
-    if (calm.matches || !el) return;
-    const r = el.getBoundingClientRect(), box = document.createElement('div');
-    box.className = 'confetti'; box.style.left = `${r.left + r.width / 2}px`; box.style.top = `${r.top + r.height / 2}px`;
-    for (let i = 0; i < 40; i++) { const s = document.createElement('i'); const a = Math.random() * Math.PI * 2, d = 80 + Math.random() * 160; s.style.setProperty('--x', `${Math.cos(a) * d}px`); s.style.setProperty('--y', `${Math.sin(a) * d - 50}px`); s.style.setProperty('--r', `${Math.random() * 720 - 360}deg`); s.style.background = ['var(--gold)', '#e3b341', '#5cc2bb', '#d9555a', '#9fbf8a'][i % 5]; box.appendChild(s); }
-    document.body.appendChild(box); setTimeout(() => box.remove(), 1200);
+  const buzz = (ms) => { try { navigator.vibrate?.(ms); } catch { /* not supported */ } };
+
+  // ---------- the pixel stadium behind every 17-0 screen ----------
+  // Drawn small (320 wide) and scaled up with crisp pixels. The crowd twinkles, jumps on a win,
+  // and the sky lights up with fireworks on a perfect season.
+  function stadium(cv) {
+    const W = 320;
+    const g = cv.getContext('2d');
+    let H = 180, base = null, crowd = [], stars = [], excite = 0, flash = 0, flashC = '255,255,255', sparks = [];
+    let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const CROWD = ['#d9555a', '#f4c44e', '#4fc1b0', '#e9ecff', '#7d86d6', '#ff9a4a', '#9fbf8a', '#c86bd8'];
+    function build() {
+      const wpx = cv.parentElement.clientWidth || 390, hpx = cv.parentElement.clientHeight || 700;
+      H = Math.max(180, Math.min(1400, Math.round(W * hpx / wpx)));
+      cv.width = W; cv.height = H;
+      base = document.createElement('canvas'); base.width = W; base.height = H;
+      const b = base.getContext('2d'); seed = 7;
+      const px = (x, y, w, h, c) => { b.fillStyle = c; b.fillRect(x, y, w, h); };
+      // night sky in hard bands
+      px(0, 0, W, H, '#070b22'); px(0, 22, W, 18, '#080d27'); px(0, 40, W, 18, '#0a102e');
+      stars = Array.from({ length: 46 }, () => ({ x: Math.floor(rnd() * W), y: Math.floor(rnd() * 50), t: rnd() }));
+      // the stands: a back wall, rows and a dark lip above the field
+      px(0, 56, W, 44, '#141a40');
+      for (let y = 58; y < 98; y += 4) px(0, y, W, 1, '#10153a');
+      px(0, 54, W, 2, '#252c66'); px(0, 98, W, 3, '#0b0f2b');
+      // scoreboard on the stands
+      px(126, 26, 68, 26, '#0b0e27'); px(126, 26, 68, 2, '#3d4590'); px(126, 50, 68, 2, '#3d4590'); px(126, 26, 2, 26, '#3d4590'); px(192, 26, 2, 26, '#3d4590');
+      px(158, 52, 4, 6, '#2b3060');
+      for (let i = 0; i < 9; i++) px(131 + i * 7, 31, 4, 3, i % 2 ? '#f4c44e' : '#4fc1b0');
+      px(134, 38, 22, 9, '#1d2250'); px(164, 38, 22, 9, '#1d2250');
+      // light towers
+      for (const x0 of [22, 272]) {
+        px(x0 + 12, 22, 2, 36, '#2b3060');
+        px(x0 - 4, 8, 34, 16, 'rgba(255,240,190,0.06)'); px(x0 - 2, 10, 30, 12, 'rgba(255,240,190,0.08)');
+        px(x0, 12, 26, 9, '#fff4cf');
+        for (let i = 0; i < 4; i++) for (let j = 0; j < 2; j++) px(x0 + 2 + i * 6, 13 + j * 4, 4, 3, '#ffe9a0');
+      }
+      // the field, looking up it from the end zone
+      const top = 101, vh = H - top;
+      const xl = (y) => 40 - ((y - top) / vh) * 200, xr = (y) => 280 + ((y - top) / vh) * 200;
+      const yards = Array.from({ length: 12 }, (_, k) => Math.round(top + vh * Math.pow(k / 11, 1.55)));
+      for (let k = 0; k < yards.length - 1; k++) {
+        for (let y = yards[k]; y < yards[k + 1]; y++) { const a = Math.max(0, Math.round(xl(y))), z = Math.min(W, Math.round(xr(y))); px(a, y, z - a, 1, k % 2 ? '#2a7434' : '#2f8a3b'); }
+        const y = yards[k]; const a = Math.max(0, Math.round(xl(y))), z = Math.min(W, Math.round(xr(y))); px(a, y, z - a, 1, 'rgba(242,246,234,0.85)');
+      }
+      for (let y = top; y < H; y++) { px(Math.round(xl(y)), y, 2, 1, '#f2f6ea'); px(Math.round(xr(y)) - 2, y, 2, 1, '#f2f6ea'); }
+      // hash marks
+      for (let k = 1; k < yards.length - 1; k++) { const y = yards[k]; for (const f of [0.42, 0.58]) { const x = Math.round(xl(y) + (xr(y) - xl(y)) * f); px(x, y - 1, 1, 3, '#f2f6ea'); } }
+      // two little lines of players near the far end
+      for (let i = 0; i < 7; i++) { px(140 + i * 6, 112, 2, 3, '#d9555a'); px(140 + i * 6, 111, 2, 1, '#f4c44e'); px(141 + i * 6, 118, 2, 3, '#e9ecff'); px(141 + i * 6, 117, 2, 1, '#3d4590'); }
+      // dark below the content so panels read well on tall screens
+      const gr = b.createLinearGradient(0, top, 0, H); gr.addColorStop(0, 'rgba(7,11,34,0)'); gr.addColorStop(1, 'rgba(7,11,34,0.55)');
+      b.fillStyle = gr; b.fillRect(0, top, W, vh);
+      crowd = [];
+      for (let y = 60; y < 97; y += 4) for (let x = 1; x < W - 1; x += 3) {
+        if (x > 120 && x < 200 && y < 62) continue;
+        if (rnd() < 0.12) continue;
+        crowd.push({ x, y, c: CROWD[Math.floor(rnd() * CROWD.length)], j: rnd() });
+      }
+    }
+    function frame(tick) {
+      g.drawImage(base, 0, 0);
+      for (const s of stars) { const on = Math.sin(tick * 0.3 + s.t * 20) > -0.4; g.fillStyle = on ? (s.t > 0.8 ? '#e9ecff' : '#8e95c4') : '#2f356c'; g.fillRect(s.x, s.y, 1, 1); }
+      for (const p of crowd) {
+        const jump = excite > 0 && p.j < excite * 0.85 && ((tick + Math.floor(p.j * 10)) % 2 === 0);
+        g.fillStyle = p.c; g.fillRect(p.x, p.y - (jump ? 2 : 0), 2, 2);
+        if (excite > 0.3 && p.j < excite * 0.3) { g.fillStyle = '#ffffff'; g.fillRect(p.x, p.y - (jump ? 3 : 1), 1, 1); }
+      }
+      for (const k of sparks) { g.fillStyle = k.c; g.fillRect(Math.round(k.x), Math.round(k.y), 2, 2); }
+      if (flash > 0) { g.fillStyle = `rgba(${flashC},${(flash * 0.35).toFixed(2)})`; g.fillRect(0, 0, W, H); }
+    }
+    let tick = 0, timer = null;
+    function loop() {
+      if (!cv.isConnected) { clearInterval(timer); return; }
+      tick++;
+      excite = Math.max(0, excite - 0.06); flash = Math.max(0, flash - 0.25);
+      sparks = sparks.filter((k) => (k.life -= 1) > 0); for (const k of sparks) { k.x += k.vx; k.y += k.vy; k.vy += 0.12; }
+      frame(tick);
+    }
+    build(); frame(0);
+    if (!calm.matches) timer = setInterval(loop, 110);
+    let rt = null;
+    const ro = new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(() => { if (cv.isConnected) { build(); frame(tick); } else ro.disconnect(); }, 120); });
+    ro.observe(cv.parentElement);
+    return {
+      cheer(level = 1) { excite = Math.min(1, Math.max(excite, level)); },
+      flash(rgb = '255,255,255', v = 1) { flash = v; flashC = rgb; },
+      fireworks(n = 6) {
+        if (calm.matches) return;
+        const burst = () => { const x = 40 + Math.random() * 240, y = 10 + Math.random() * 40, c = CROWD[Math.floor(Math.random() * CROWD.length)];
+          for (let i = 0; i < 26; i++) { const a = (i / 26) * Math.PI * 2, v = 1.2 + Math.random() * 1.4; sparks.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 0.6, c, life: 14 + Math.floor(Math.random() * 8) }); } };
+        for (let i = 0; i < n; i++) setTimeout(burst, i * 380);
+      },
+    };
   }
+  // Every 17-0 screen sits in one arcade scene; the stadium keeps running between screens
+  function paint(html) {
+    let scene = $('.px17', view);
+    if (!scene) {
+      view.innerHTML = '<div class="px17"><canvas class="px17-bg" aria-hidden="true"></canvas><div class="px17-in"></div></div>';
+      scene = $('.px17', view);
+      S.s17.st = stadium($('.px17-bg', scene));
+    }
+    $('.px17-in', scene).innerHTML = html;
+    return scene;
+  }
+  const title = (t) => `<h1 class="px17-title" data-text="${esc(t)}">${esc(t)}</h1>`;
+  const back = (right) => `<div class="px17-top"><a class="px17-back" href="#/170">‹ 17-0</a>${right || ''}</div>`;
 
   // ---------- home ----------
   async function showHome() {
-    view.innerHTML = `${pageHead('Arcade · the \'70s to today', '17-0', 'Spin a team and a decade. Draft one player.<br>Fill 6 spots. Can your lineup go 17-0?')}<div id="s17Body">${skel(3, 'cards')}</div>`;
+    paint(`<p class="px17-kick c">Arcade · unlimited · free</p>${title('17-0')}<p class="px17-sub">Spin a team and a decade. Draft a six-man lineup.<br>Run the table.</p><div class="px-panel"><p class="px17-kick">Loading…</p></div>`);
     let t = null; try { t = await api('/api/170/today'); } catch { /* still playable */ }
-    const el = $('#s17Body'); if (!el || !/^#\/?170\/?$/.test(location.hash)) return; // moved on while this loaded
-    el.innerHTML = `<div class="s17-modes one">${Object.entries(MODES).map(([k, [e, title, line]]) => `<button type="button" class="s17-mode ${k}" data-act="s17start" data-mode="${k}"><span class="e">${e}</span><b>${title}</b><span>${line}</span></button>`).join('')}</div>
-      ${t?.best ? `<div class="s17-best"><span>Your best <b>${t.best.wins}-${17 - t.best.wins}</b></span><span>Perfect seasons <b>${t.best.perfect}</b></span><span>Seasons played <b>${t.best.played}</b></span></div>` : ''}
-      <section class="s17-sec s17-how"><div class="label">How it works</div><ol>
-        <li>Each round spins a random <b>team and decade</b>, like the 1980s 49ers, anywhere from the 1970s to today.</li>
-        <li>Draft any player's <b>best season</b> with that team in that decade into an open spot: QB, RB, 2 WR, TE or FLEX (RB, WR or TE).</li>
-        <li>Don't like the spin? Each round you get <b>one re-spin</b>: a new team, or the same team in a different decade.</li>
-        <li>Your lineup plays 17 games. Each player scores his <b>real season-total PPR points</b> from that year, spread over your 17 weeks with good and bad weeks. No era adjustment, so big modern seasons score big.</li>
-        <li>Go 17-0 for the <b>Perfect 17-0</b> badge and a card pack.</li></ol></section>`;
+    if (!/^#\/?170\/?$/.test(location.hash) || !$('.px17')) return; // moved on while this loaded
+    const b = t?.best;
+    paint(`<p class="px17-kick c">Arcade · unlimited · free</p>${title('17-0')}<p class="px17-sub">Spin a team and a decade. Draft a six-man lineup.<br>Run the table.</p>
+      <div class="px-panel">
+        <p class="px17-kick">Unlimited · 6 rounds · the '70s to today</p>
+        <h2 class="px17-h">Go undefeated</h2>
+        <p class="px17-txt">Every round spins a team and a decade, like the <b>1980s 49ers</b>. Grab any player's best season with them. Your lineup plays all 17 weeks on real season PPR.</p>
+        <button type="button" class="px-go big" data-act="s17start" data-mode="decades">▶ Start a season</button>
+        <div class="px17-stats"><div><small>Best</small><b>${b ? `${b.wins}-${17 - b.wins}` : '--'}</b></div><div><small>Perfect</small><b>${b ? b.perfect : 0}</b></div><div><small>Seasons</small><b>${b ? b.played : 0}</b></div></div>
+      </div>
+      <div class="px-panel">
+        <p class="px17-kick">How it works</p>
+        <ol class="px17-how">
+          <li><b>Spin.</b> A random team and decade, from the 1970s to today.</li>
+          <li><b>Draft.</b> Take one player's best season with that team in that decade: QB, RB, 2 WR, TE or FLEX.</li>
+          <li><b>Re-spin.</b> One per round: a new team, or the same team in a new decade.</li>
+          <li><b>Play.</b> Each player scores his real season PPR total, spread over 17 weeks with hot and cold games.</li>
+          <li><b>17-0</b> wins the Perfect 17-0 badge and a card pack.</li>
+        </ol>
+      </div>`);
   }
   SL.acts.s17start = async (t) => {
-    t.disabled = true;
-    try { const r = await api('/api/170/start', { method: 'POST', body: { mode: t.dataset.mode } }); S.s17.run = r.run; location.hash = `#/170/${r.run.id}`; }
+    t.disabled = true; buzz(10);
+    try { const r = await api('/api/170/start', { method: 'POST', body: { mode: 'decades' } }); S.s17.run = r.run; S.s17.fresh = true; location.hash = `#/170/${r.run.id}`; }
     catch (e) { toast(e.message); t.disabled = false; }
   };
 
   // ---------- a run ----------
   async function showRun(id) {
     if (!S.s17.run || S.s17.run.id !== id) {
-      view.innerHTML = `${pageHead('17-0', 'Loading…')}${skel(3, 'cards')}`;
-      let run; try { run = (await api(`/api/170/run/${encodeURIComponent(id)}`)).run; } catch (e) { if (location.hash.includes(id)) view.innerHTML = `<div class="empty"><b>${esc(e.message)}</b><a href="#/170">Start a new run</a></div>`; return; }
+      paint(`${back()}<div class="px-panel"><p class="px17-kick">Loading your season…</p></div>`);
+      let run; try { run = (await api(`/api/170/run/${encodeURIComponent(id)}`)).run; } catch (e) { if (location.hash.includes(id)) paint(`${back()}<div class="px-panel"><h2 class="px17-h">${esc(e.message)}</h2><a class="px-go" href="#/170">Start a new run</a></div>`); return; }
       if (!location.hash.includes(id)) return; // moved on while this loaded
       S.s17.run = run;
     }
@@ -66,86 +178,149 @@
   function slotsFor(run, pos) {
     const open = openSlots(run);
     const own = open.filter((s) => s !== 'FLEX' && s !== 'SF' && FITS[s].includes(pos)).slice(0, 1);
-    return [...own, ...(open.includes('FLEX') && FITS.FLEX.includes(pos) ? ['FLEX'] : []), ...(open.includes('SF') ? ['SF'] : [])];
+    return [...own, ...(open.includes('FLEX') && FITS.FLEX.includes(pos) ? ['FLEX'] : [])];
   }
-  function lineupBar(run) {
-    return `<div class="s17-lineup">${SLOTS.map((s) => {
+  function lineupBar(run, fresh) {
+    const order = run.picks.map((p) => p.slot);
+    return `<div class="px17-line">${SLOTS.map((s) => {
       const p = run.picks.find((x) => x.slot === s);
-      return `<div class="s17-slot ${p ? 'full' : ''}"><small>${LABEL[s]}</small>${p ? `<b>${esc(p.name)}</b><span>${p.year} ${tlogo(p.team)} ${fmt(p.ppr, 0)} pts</span>` : '<b class="s17-open">open</b>'}</div>`;
+      const isNew = fresh && p && order[order.length - 1] === s;
+      return `<div class="px17-slot ${p ? 'full' : ''} ${isNew ? 'pop' : ''}"><small>${LABEL[s]}</small>${p ? `<b>${esc(p.name)}</b><span>${tlogo(p.team)}'${String(p.year).slice(2)} · ${fmt(p.ppr, 0)}</span>` : '<b class="open">open</b>'}</div>`;
     }).join('')}</div>`;
+  }
+  // Team power: your lineup's points per week so far, against the average opponent
+  function power(run) {
+    const opp = run.opp || 93;
+    const per = run.picks.reduce((a, p) => a + (p.ppr || 0), 0) / 17;
+    const max = Math.max(opp * 1.6, per * 1.1);
+    const left = SLOTS.length - run.picks.length;
+    const tier = left ? `${left} pick${left === 1 ? '' : 's'} to go` : per > opp * 1.25 ? '17-0 threat' : per > opp * 1.1 ? 'Contender' : per > opp ? 'Playoff team' : 'Underdog';
+    return `<div class="px17-power"><div class="row"><span>Team power</span><b>${fmt(per, 1)}<small> pts/week</small></b><em>${esc(tier)}</em></div>
+      <div class="bar"><i style="width:${Math.min(100, (per / max) * 100).toFixed(1)}%"></i><u style="left:${((opp / max) * 100).toFixed(1)}%" title="Average opponent"></u></div>
+      <small class="note">The line is the average opponent: ${fmt(opp, 0)} a week.</small></div>`;
   }
   function draw(animate) {
     const run = S.s17.run;
     if (run.done) return drawSeason(run);
     const sp = run.spin, ro = sp.roster;
-    const modeTag = run.mode === 'daily' ? `Daily #${run.number}` : run.mode === 'franchise' ? 'Franchise' : run.mode === 'decades' ? 'Decades' : 'Unlimited';
-    view.innerHTML = `<div class="s17-top"><a class="s17-back" href="#/170">‹ 17-0</a><span class="label">${esc(modeTag)} · Round ${run.round + 1} of ${SLOTS.length}</span></div>
-      ${lineupBar(run)}
-      <section class="s17-spin" style="--tc:${esc(SL.teamInfo(sp.team).color || '#33415a')}">
-        <div class="s17-wheel" id="s17Wheel">${tlogo(sp.team)}<div><div class="s17-year">${sp.decade ? `${sp.year}s` : sp.year}</div><div class="s17-team">${esc(sp.decade ? sp.name.replace(/^\d{4}s /, '') : sp.name)}</div></div></div>
-        <div class="s17-re">${run.mode !== 'franchise' ? `<button type="button" class="pill" data-act="s17re" data-k="team" ${sp.canTeam ? '' : 'disabled'}>🔄 New team</button>` : ''}<button type="button" class="pill" data-act="s17re" data-k="year" ${sp.canYear ? '' : 'disabled'}>🔄 ${sp.decade ? 'New decade' : 'New year'}</button><small>${sp.canTeam || sp.canYear ? 'One re-spin this round' : 'Re-spin used'}</small></div>
+    const fresh = S.s17.fresh; S.s17.fresh = false;
+    const pips = SLOTS.map((_, i) => `<i class="${i < run.round ? 'done' : i === run.round ? 'now' : ''}"></i>`).join('');
+    paint(`${back(`<span class="px17-kick">Round ${run.round + 1} of ${SLOTS.length}</span><span class="px17-pips">${pips}</span>`)}
+      ${lineupBar(run, !fresh)}
+      ${power(run)}
+      <section class="px-panel px17-spin" style="--tc:${esc(SL.teamInfo(sp.team).color || '#3d4590')}">
+        <p class="px17-kick">Your spin</p>
+        <div class="px17-reels" id="s17Wheel">
+          <div class="reel logo">${tlogo(sp.team)}</div>
+          <div class="reel yr"><b class="s17-year">${sp.decade ? `${sp.year}s` : sp.year}</b></div>
+          <div class="reel tm"><b class="s17-team">${esc(sp.decade ? sp.name.replace(/^\d{4}s /, '') : sp.name)}</b></div>
+        </div>
+        <div class="px17-re"><button type="button" class="px-go teal small" data-act="s17re" data-k="team" ${sp.canTeam ? '' : 'disabled'}>↻ New team</button><button type="button" class="px-go teal small" data-act="s17re" data-k="year" ${sp.canYear ? '' : 'disabled'}>↻ ${sp.decade ? 'New decade' : 'New year'}</button><small>${sp.canTeam || sp.canYear ? 'One re-spin this round' : 'Re-spin used'}</small></div>
       </section>
-      <div class="s17-roster">${ro.players.map((p) => {
-        const taken = run.picks.some((x) => x.name === p.name);
-        const where = taken ? [] : slotsFor(run, p.pos);
-        return `<div class="s17-p ${where.length ? '' : 'no'}"><span class="s17-ini">${esc(ini(p.name))}</span>
-          <div class="s17-pi"><b>${esc(p.name)}</b><small>${sp.decade ? `<b class="s17-yr">${p.year}</b> · ` : ''}${p.pos} · ${p.g} of ${p.games || ro.games} games · ${esc(statLine(p))}</small></div>
-          <div class="s17-pts"><b>${fmt(p.ppr, 0)}</b><small>PPR pts</small></div>
-          <div class="s17-go">${taken ? '<small>On your team</small>' : where.length ? where.map((s, i) => `<button type="button" class="btn ${i ? 'ghost' : ''} sm" data-act="s17pick" data-id="${esc(p.id)}" data-slot="${s}">${i ? LABEL[s] : `Draft · ${LABEL[s]}`}</button>`).join('') : '<small>No open spot</small>'}</div></div>`;
-      }).join('')}</div>
-      <p class="rules s17-note">“PPR pts” is his real fantasy total for that whole season in PPR (1 per catch), with no era adjustment. ${sp.decade ? 'Each player shows his best season with this team in the decade.' : `${esc(String(ro.year))} had ${ro.games} games.`} Missed games are already in the total.</p>`;
-    if (animate && !calm.matches) spinAnim(sp);
+      <section class="px-panel px17-board">
+        <p class="px17-kick">Draft board · best season with the ${esc(sp.name)}</p>
+        ${ro.players.map((p, i) => {
+          const taken = run.picks.some((x) => x.name === p.name);
+          const where = taken ? [] : slotsFor(run, p.pos);
+          return `<div class="px17-p ${where.length ? '' : 'no'}" style="--d:${Math.min(i, 12) * 35}ms"><span class="pos ${p.pos}">${p.pos}</span>
+            <div class="pi"><b>${esc(p.name)}</b><small>${sp.decade ? `<em>${p.year}</em> · ` : ''}${p.g} of ${p.games || ro.games} games · ${esc(statLine(p))}</small></div>
+            <div class="pts"><b>${fmt(p.ppr, 0)}</b><small>PPR</small></div>
+            <div class="go">${taken ? '<small>On your team</small>' : where.length ? where.map((s, j) => `<button type="button" class="px-go small ${j ? 'teal' : ''}" data-act="s17pick" data-id="${esc(p.id)}" data-slot="${s}">${j ? LABEL[s] : `Draft · ${LABEL[s]}`}</button>`).join('') : '<small>No open spot</small>'}</div></div>`;
+        }).join('')}
+        <p class="px17-foot">PPR is his real fantasy total for that whole season (1 per catch). Missed games are already in it.</p>
+      </section>`);
+    if (animate && !calm.matches) spinAnim(sp); else landed();
   }
+  // a slot machine: the decade and team reels roll in steps, then slam down
   function spinAnim(sp) {
     const w = $('#s17Wheel'); if (!w) return;
-    const y = w.querySelector('.s17-year'), tm = w.querySelector('.s17-team');
-    const names = ['Dallas Cowboys', 'Miami Dolphins', 'Green Bay Packers', 'Pittsburgh Steelers', 'San Francisco 49ers', 'Kansas City Chiefs', 'Buffalo Bills', 'Detroit Lions', 'Denver Broncos', 'New York Giants'];
+    const y = $('.s17-year', w), tm = $('.s17-team', w);
+    const names = ['Cowboys', 'Dolphins', 'Packers', 'Steelers', '49ers', 'Chiefs', 'Bills', 'Lions', 'Broncos', 'Giants', 'Raiders', 'Bears', 'Eagles', 'Rams'];
     w.classList.add('rolling');
     let i = 0;
-    const t = setInterval(() => { y.textContent = sp.decade ? `${1970 + 10 * Math.floor(Math.random() * 6)}s` : 1970 + Math.floor(Math.random() * 56); tm.textContent = names[i++ % names.length]; }, 55);
-    setTimeout(() => { clearInterval(t); y.textContent = sp.decade ? `${sp.year}s` : sp.year; tm.textContent = sp.name.replace(/^\d{4}s /, ''); w.classList.remove('rolling'); w.classList.add('landed'); }, 750);
+    const t = setInterval(() => { y.textContent = `${1970 + 10 * Math.floor(Math.random() * 6)}s`; tm.textContent = names[i++ % names.length]; }, 60);
+    setTimeout(() => { y.textContent = sp.decade ? `${sp.year}s` : sp.year; w.classList.add('y-in'); }, 520);
+    setTimeout(() => { clearInterval(t); tm.textContent = sp.name.replace(/^\d{4}s /, ''); w.classList.remove('rolling'); w.classList.add('landed'); landed(); buzz(12); }, 900);
   }
+  function landed() { S.s17.st?.flash('244,196,78', 0.5); }
   SL.acts.s17re = async (t) => {
+    t.disabled = true;
     try { S.s17.run = (await api('/api/170/respin', { method: 'POST', body: { runId: S.s17.run.id, kind: t.dataset.k } })).run; draw(true); }
-    catch (e) { toast(e.message); }
+    catch (e) { toast(e.message); t.disabled = false; }
   };
   SL.acts.s17pick = async (t) => {
     document.querySelectorAll('[data-act="s17pick"]').forEach((b) => { b.disabled = true; });
     try {
       S.s17.run = (await api('/api/170/pick', { method: 'POST', body: { runId: S.s17.run.id, playerId: t.dataset.id, slot: t.dataset.slot } })).run;
-      try { navigator.vibrate?.(15); } catch { /* not supported */ }
+      buzz(15); S.s17.st?.cheer(0.6);
       draw(true); window.scrollTo({ top: 0, behavior: calm.matches ? 'auto' : 'smooth' });
     } catch (e) { toast(e.message); draw(false); }
   };
 
-  // ---------- the season ----------
+  // ---------- the season: a scoreboard that plays out week by week ----------
+  const verdict = (w) => (w === 17 ? 'Perfect season' : w >= 15 ? 'Contender' : w >= 12 ? 'Playoff team' : w >= 9 ? 'Bubble team' : w >= 5 ? 'Rebuilding' : 'Tank job');
   function drawSeason(run) {
     const r = run.result;
     const perfect = r.wins === 17;
     const best = r.weeks.reduce((a, w) => (w.you > a.you ? w : a), r.weeks[0]);
     const losses = r.weeks.filter((w) => !w.win).sort((a, b) => (b.you - b.opp) - (a.you - a.opp));
-    view.innerHTML = `<div class="s17-top"><a class="s17-back" href="#/170">‹ 17-0</a><span class="label">${run.mode === 'daily' ? `Daily #${run.number}` : run.mode === 'franchise' ? 'Franchise' : run.mode === 'decades' ? 'Decades' : 'Unlimited'} · The season</span></div>
-      <section class="s17-res ${perfect ? 'perfect' : ''}"><div class="s17-rec"><b id="s17W">0</b><i>-</i><b id="s17L">0</b></div><div class="s17-verdict" id="s17V">&nbsp;</div>
-        <div class="s17-weeks">${r.weeks.map((w) => `<div class="s17-wk ${w.win ? 'w' : 'l'}" title="Week ${w.week}: ${fmt(w.you)} to ${fmt(w.opp)}${w.out.length ? ` · out: ${esc(w.out.join(', '))}` : ''}"><small>W${w.week}</small><b>${w.win ? 'W' : 'L'}</b><span>${fmt(w.you, 0)}-${fmt(w.opp, 0)}</span></div>`).join('')}</div></section>
-      <div class="s17-facts"><span>Season points <b>${fmt(r.points, 0)}</b></span><span>Best week <b>${fmt(best.you)}</b> (W${best.week})</span>${losses[0] ? `<span>Closest loss <b>${fmt(losses[0].opp - losses[0].you)}</b> (W${losses[0].week}${losses[0].out.length ? `, ${esc(losses[0].out.slice(0, 2).join(' & '))} out` : ''})</span>` : ''}</div>
-      ${lineupBar(run)}
-      <div class="share-btns"><button class="btn" data-act="s17share">Share my season</button><button class="btn ghost" data-act="s17start" data-mode="${run.mode === 'daily' ? 'unlimited' : run.mode}">Play again</button><a class="btn ghost" href="#/170">17-0 home</a></div>
-      ${run.mode === 'daily' && run.mine && !run.counted ? '<p class="rules">You already had a run count today, so this one was for fun.</p>' : ''}`;
-    // weeks flip over one by one
-    const tiles = [...document.querySelectorAll('.s17-wk')];
-    let w = 0, l = 0;
-    const done = () => { $('#s17V').innerHTML = perfect ? '🏆 PERFECT SEASON' : r.wins >= 14 ? '🔥 Contender' : r.wins >= 10 ? 'Playoff team' : r.wins >= 7 ? 'Bubble team' : '💀 Rebuilding year'; if (perfect) confetti($('.s17-rec')); };
-    if (calm.matches) { tiles.forEach((t) => t.classList.add('show')); $('#s17W').textContent = r.wins; $('#s17L').textContent = r.losses; done(); return; }
-    tiles.forEach((t, i) => setTimeout(() => {
-      t.classList.add('show');
-      if (r.weeks[i].win) $('#s17W').textContent = ++w; else $('#s17L').textContent = ++l;
-      if (i === tiles.length - 1) done();
-    }, 250 + i * 170));
+    let streak = 0; for (const w of r.weeks) { if (w.win) streak++; else break; }
+    paint(`${back('<span class="px17-kick">The season</span>')}
+      <section class="px-panel px17-sb ${perfect ? 'perfect' : ''}" id="s17Sb">
+        <div class="px17-sb-top"><span id="s17Wk">Kickoff</span><button type="button" class="px17-skip" data-act="s17skip">Skip ›</button></div>
+        <div class="px17-rec"><b id="s17W">0</b><i>-</i><b id="s17L">0</b></div>
+        <div class="px17-game" id="s17G">&nbsp;</div>
+        <div class="px17-banner" id="s17B"></div>
+        <div class="px17-weeks">${r.weeks.map((w) => `<div class="px17-wk ${w.win ? 'w' : 'l'}" title="Week ${w.week}: ${fmt(w.you)} to ${fmt(w.opp)}"><small>${w.week}</small><b>${w.win ? 'W' : 'L'}</b></div>`).join('')}</div>
+      </section>
+      <div class="px17-after" id="s17After">
+        <div class="px17-stats wide"><div><small>Season pts</small><b>${fmt(r.points, 0)}</b></div><div><small>Best week</small><b>${fmt(best.you, 0)}</b><em>W${best.week}</em></div><div><small>${losses[0] ? 'Closest loss' : 'Win streak'}</small><b>${losses[0] ? fmt(losses[0].opp - losses[0].you, 1) : 17}</b>${losses[0] ? `<em>W${losses[0].week}</em>` : ''}</div><div><small>Opening run</small><b>${streak}-0</b></div></div>
+        <div class="px-panel"><p class="px17-kick">Your lineup</p>${lineupBar(run)}</div>
+        <div class="px17-btns"><button type="button" class="px-go big" data-act="s17start" data-mode="decades">▶ Run it back</button><button type="button" class="px-go teal" data-act="s17share">Share my season</button><a class="px17-link" href="#/170">17-0 home</a></div>
+      </div>`);
+    S.s17.play = playSeason(run);
   }
+  async function playSeason(run) {
+    const r = run.result, me = run.id;
+    const tiles = [...document.querySelectorAll('.px17-wk')];
+    const W = $('#s17W'), L = $('#s17L'), wk = $('#s17Wk'), gm = $('#s17G'), bn = $('#s17B'), sb = $('#s17Sb'), after = $('#s17After');
+    const st = S.s17.st;
+    let w = 0, l = 0, skip = false, snapped = false;
+    S.s17.skip = () => { skip = true; };
+    const finish = () => {
+      tiles.forEach((t) => t.classList.add('show'));
+      W.textContent = r.wins; L.textContent = r.losses;
+      wk.textContent = 'Final';
+      gm.innerHTML = `<b class="px17-verdict ${r.wins === 17 ? 'gold' : r.wins >= 12 ? 'good' : r.wins < 9 ? 'bad' : ''}">${verdict(r.wins)}</b>`;
+      bn.className = 'px17-banner'; bn.textContent = r.wins === 17 ? '17-0. The whole table.' : snapped ? bn.textContent : '';
+      after.classList.add('show');
+      $('.px17-skip')?.remove();
+      if (r.wins === 17) { sb.classList.add('champ'); st?.fireworks(8); st?.cheer(1); SL.confetti?.(); buzz([30, 40, 30, 40, 80]); }
+      else if (r.wins >= 14) st?.cheer(0.8);
+    };
+    if (calm.matches) { finish(); return; }
+    for (let i = 0; i < r.weeks.length; i++) {
+      if (skip || S.s17.run?.id !== me || !tiles[i]?.isConnected) break;
+      const x = r.weeks[i];
+      wk.textContent = `Week ${x.week}`;
+      gm.innerHTML = `<span class="you">${fmt(x.you, 1)}</span><i>vs</i><span class="opp">${fmt(x.opp, 1)}</span>`;
+      gm.classList.remove('hit'); void gm.offsetWidth; gm.classList.add('hit');
+      tiles[i].classList.add('show');
+      if (x.win) {
+        W.textContent = ++w; st?.cheer(0.5 + Math.min(0.5, w / 30));
+        if (!l && w >= 5) { bn.className = 'px17-banner hot'; bn.textContent = `Undefeated · ${w}-0`; }
+      } else {
+        L.textContent = ++l; sb.classList.remove('shake'); void sb.offsetWidth; sb.classList.add('shake'); st?.flash('217,85,90', 0.6); buzz(25);
+        if (!snapped) { snapped = true; bn.className = 'px17-banner cold'; bn.textContent = w ? `Streak snapped in week ${x.week} at ${w}-0` : 'Lost the opener'; }
+      }
+      await sleep(i > 13 ? 430 : 270); // the last few weeks slow down for the drama
+    }
+    if (S.s17.run?.id === me && $('#s17Sb')) finish();
+  }
+  SL.acts.s17skip = () => { S.s17.skip?.(); };
   SL.acts.s17share = async () => {
     const run = S.s17.run, r = run.result;
-    const tag = run.mode === 'daily' ? `Daily #${run.number}` : run.mode === 'franchise' ? 'Franchise' : run.mode === 'decades' ? 'Decades' : 'Unlimited';
-    const text = `Sideline 17-0 · ${tag}\n${r.wins}-${r.losses}${r.wins === 17 ? ' 🏆' : ''}\n${r.weeks.map((w) => (w.win ? '🟩' : '🟥')).join('')}\n${run.picks.map((p) => `${LABEL[p.slot]} ${p.name} '${String(p.year).slice(2)}`).join(', ')}\n${location.href.split('#')[0]}#/170`;
+    const text = `Sideline 17-0\n${r.wins}-${r.losses}${r.wins === 17 ? ' 🏆' : ''} · ${verdict(r.wins)}\n${r.weeks.map((w) => (w.win ? '🟩' : '🟥')).join('')}\n${run.picks.map((p) => `${LABEL[p.slot]} ${p.name} '${String(p.year).slice(2)}`).join(', ')}\n${location.href.split('#')[0]}#/170`;
     if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e.name === 'AbortError') return; } }
     try { await navigator.clipboard.writeText(text); toast('Copied. Paste it anywhere.'); } catch { prompt('Copy your season', text); }
   };

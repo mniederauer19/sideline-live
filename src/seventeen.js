@@ -143,7 +143,7 @@ function mount(app, { A }) {
     const cur = run.cur ? JSON.parse(run.cur) : null;
     const sp = spins(run.mode, run.seed).rounds[run.round] || null;
     const out = { id: run.id, mode: run.mode, day: run.day, number: run.day ? dayNo(run.day) : null, round: run.round, picks, done: run.round >= ROUNDS,
-      franchise: run.mode === 'franchise' ? spins(run.mode, run.seed).franchise : null, mine: !run.user_id || run.user_id === meId, counted: !!run.counted };
+      franchise: run.mode === 'franchise' ? spins(run.mode, run.seed).franchise : null, mine: !run.user_id || run.user_id === meId, counted: !!run.counted, opp: OPP_MEAN };
     if (!out.done && cur) out.spin = { ...cur, name: spinName(cur), roster: roster(cur.team, cur.year, cur.decade), canTeam: !run.rerolled && !!sp?.altTeam, canYear: !run.rerolled && !!sp?.altYear };
     if (out.done) {
       const lineup = picks.map((p) => ({ ...p, games: DATA.seasons[p.year].g }));

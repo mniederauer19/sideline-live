@@ -706,25 +706,35 @@
     else if (!S.me) { try { const g = JSON.parse(ls.get(`sl-daily-${d?.day}`) || '[]'); if (g.length) dailyStatus = `${g.length}/6 tries used`; } catch { /* ignore */ } }
     const streak = ch?.daily?.streak ?? localDailyStats().streak;
     const tile = (href, emoji, title, line, status, cls = '') => `<a class="ar-tile ${cls}" href="${href}"><span class="ar-e">${emoji}</span><span class="ar-t">${title}</span><span class="ar-l">${line}</span>${status ? `<span class="ar-s">${status}</span>` : ''}</a>`;
+    // Grouped the way people play them: once a day, as much as you want, live, weekly, and the extras
+    const section = (emoji, name, line, tiles) => `<section class="ar-sec"><div class="ar-sec-h"><h2>${emoji} ${name}</h2><span>${line}</span></div><div class="ar-grid ${tiles.length === 1 ? 'solo' : ''}">${tiles.join('')}</div></section>`;
     el.innerHTML = `${installBanner()}
-      <div class="ar-grid">
-        ${tile(live.length ? `#/game/${esc(live[0].id)}` : '#/feed', '📣', 'Call It', 'Guess the next play before the snap: run, short pass, deep shot or TD.', live.length ? `<span class="live">${live.length} live</span> · tap a game` : next ? `Opens at kickoff · ${esc(SL.kickoff(next))}` : 'Opens when games are live', live.length ? 'hot' : '')}
-        ${tile('#/170', '🏆', '17-0', 'Spin a team and a decade from the \'70s to today. Draft a lineup. Go undefeated.', 'New · play as many as you want', 'new')}
-        ${tile('#/daily', '🧩', `Sideline Daily${d?.number ? ` #${d.number}` : ''}`, 'Name the player from a real stat line. 6 tries.', `${dailyStatus}${streak ? ` · 🔥 ${streak}` : ''}`)}
-        ${tile('#/props', '🎯', 'Player props', 'Pick 2 to 5 More or Less. All hit and win up to +600.', '')}
-        ${tile('#/cards', '🃏', 'Moment cards', 'Collect the week\'s biggest plays. Open packs, swap with friends.', '')}
-        ${tile('#/takes', '🌶️', 'Hot takes', 'Post a take, get voted W or L, collect receipts.', ch?.takes ? `Your receipts: ${ch.takes.hit}-${ch.takes.miss}` : '')}
-        ${tile('#/aura', '✨', 'Aura', 'Who\'s got it, and who\'s cooked this week.', '')}
-        ${tile('#/duels', '⚔️', 'Duels', 'Your lineup vs. a friend\'s, from one link.', '')}
-        ${tile('#/house', '🏠', 'Beat the House', 'The best projected lineup under the cap. Beat it.', '')}
-        ${tile('#/wrapped', '🎁', 'Wrapped', 'Your week in one card to post.', '')}
-        ${tile('#/locker', '🔓', 'Locker', 'Level up to unlock card frames, colors and name tags.', '')}
-      </div>
+      ${section('📅', 'Daily games', 'One shot a day. A new one every night at midnight.', [
+        tile('#/daily', '🧩', `Sideline Daily${d?.number ? ` #${d.number}` : ''}`, 'Name the player from a real stat line. 6 tries.', `${dailyStatus}${streak ? ` · 🔥 ${streak}` : ''}`),
+      ])}
+      ${section('♾️', 'Unlimited', 'Play as many times as you want.', [
+        tile('#/170', '🏆', '17-0', 'Spin a team and a decade from the \'70s to today. Draft a lineup. Go undefeated.', 'New · play as many as you want', 'new'),
+      ])}
+      ${section('🔴', 'Live on game days', 'Only open while games are on.', [
+        tile(live.length ? `#/game/${esc(live[0].id)}` : '#/feed', '📣', 'Call It', 'Guess the next play before the snap: run, short pass, deep shot or TD.', live.length ? `<span class="live">${live.length} live</span> · tap a game` : next ? `Opens at kickoff · ${esc(SL.kickoff(next))}` : 'Opens when games are live', live.length ? 'hot' : ''),
+      ])}
+      ${section('🗓️', 'Weekly', 'Set it up once a week. Graded when the games are final.', [
+        tile('#/props', '🎯', 'Player props', 'Pick 2 to 5 More or Less. All hit and win up to +600.', ''),
+        tile('#/house', '🏠', 'Beat the House', 'The best projected lineup under the cap. Beat it.', ''),
+        tile('#/duels', '⚔️', 'Duels', 'Your lineup vs. a friend\'s, from one link.', ''),
+        tile('#/wrapped', '🎁', 'Wrapped', 'Your week in one card to post.', ''),
+      ])}
+      ${section('🃏', 'Collect and talk', 'Packs, takes and unlocks from everything you play.', [
+        tile('#/cards', '🃏', 'Moment cards', 'Collect the week\'s biggest plays. Open packs, swap with friends.', ''),
+        tile('#/takes', '🌶️', 'Hot takes', 'Post a take, get voted W or L, collect receipts.', ch?.takes ? `Your receipts: ${ch.takes.hit}-${ch.takes.miss}` : ''),
+        tile('#/aura', '✨', 'Aura', 'Who\'s got it, and who\'s cooked this week.', ''),
+        tile('#/locker', '🔓', 'Locker', 'Level up to unlock card frames, colors and name tags.', ''),
+      ])}
       ${ch?.list?.length ? `<section class="ch-sec"><div class="ch-head"><div><div class="label">Week ${ch.week} challenges</div><h2>${ch.list.filter((c) => c.done).length}/${ch.list.length} done${ch.allDone ? ' 🏆' : ''}</h2></div><span class="sub">Finish any ${ch.need || ch.list.length} for the Week ${ch.week} Grinder badge and 3 card packs</span></div>
         ${ch.list.map((c) => `<div class="ch ${c.done ? 'done' : ''}"><span class="ch-e">${c.emoji}</span><span class="ch-l">${esc(c.label)}<i class="ch-bar"><i style="width:${c.progress / c.goal * 100}%"></i></i></span><b>${c.done ? '✓' : `${c.progress}/${c.goal}`}</b></div>`).join('')}
         ${S.me ? '' : '<p class="rules"><a href="#" data-act="join">Sign in</a> to track your progress and earn badges.</p>'}</section>` : ''}
       ${ch?.badges?.length ? `<section class="ch-sec"><div class="label">Your badges</div><div class="bdg-row">${ch.badges.map((b) => `<span class="bdg" title="Earned ${new Date(b.earned_at).toLocaleDateString()}">🏅 ${esc(b.label)}</span>`).join('')}</div></section>` : ''}`;
-    refreshAnim($('.ar-grid'));
+    document.querySelectorAll('.ar-grid').forEach((g) => refreshAnim(g));
   }
 
   // ================= account sheet extras =================
