@@ -40,7 +40,7 @@
   const calm = window.matchMedia('(prefers-reduced-motion: reduce)');
   function swap(fn) {
     if (calm.matches || !document.startViewTransition) return fn();
-    try { return document.startViewTransition(fn); } catch { return fn(); }
+    try { const t = document.startViewTransition(fn); t.ready?.catch(() => {}); return t; } catch { return fn(); } // a skipped transition is fine
   }
   // ---------- motion helpers ----------
   // A highlight that glides to the selected tab/filter instead of jumping

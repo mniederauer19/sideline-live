@@ -36,7 +36,7 @@
   async function showHome() {
     view.innerHTML = `${pageHead('Arcade · 1970 to today', '17-0', 'Spin a team and a season. Draft one player.<br>Fill 8 spots. Can your lineup go 17-0?')}<div id="s17Body">${skel(3, 'cards')}</div>`;
     let t = null; try { t = await api('/api/170/today'); } catch { /* still playable */ }
-    const el = $('#s17Body'); if (!el) return;
+    const el = $('#s17Body'); if (!el || !/^#\/?170\/?$/.test(location.hash)) return; // moved on while this loaded
     el.innerHTML = `<div class="s17-modes">${Object.entries(MODES).map(([k, [e, title, line]]) => `<button type="button" class="s17-mode ${k}" data-act="s17start" data-mode="${k}"><span class="e">${e}</span><b>${title}</b><span>${line}</span></button>`).join('')}</div>
       ${t?.best ? `<div class="s17-best"><span>Your best <b>${t.best.wins}-${17 - t.best.wins}</b></span><span>Perfect seasons <b>${t.best.perfect}</b></span><span>Seasons played <b>${t.best.played}</b></span></div>` : ''}
       <section class="s17-sec s17-how"><div class="label">How it works</div><ol>
@@ -56,7 +56,9 @@
   async function showRun(id) {
     if (!S.s17.run || S.s17.run.id !== id) {
       view.innerHTML = `${pageHead('17-0', 'Loading…')}${skel(3, 'cards')}`;
-      try { S.s17.run = (await api(`/api/170/run/${encodeURIComponent(id)}`)).run; } catch (e) { view.innerHTML = `<div class="empty"><b>${esc(e.message)}</b><a href="#/170">Start a new run</a></div>`; return; }
+      let run; try { run = (await api(`/api/170/run/${encodeURIComponent(id)}`)).run; } catch (e) { if (location.hash.includes(id)) view.innerHTML = `<div class="empty"><b>${esc(e.message)}</b><a href="#/170">Start a new run</a></div>`; return; }
+      if (!location.hash.includes(id)) return; // moved on while this loaded
+      S.s17.run = run;
     }
     draw(true);
   }
