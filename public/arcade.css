@@ -549,7 +549,7 @@ a.un-plain { color: inherit; }
 .s17-how ol { margin: 0; padding-left: 20px; line-height: 1.6; color: var(--ink-2); }
 .s17-top { display: flex; align-items: center; gap: 14px; margin: 14px 0 12px; }
 .s17-back { font: 600 14px/1 var(--body); color: var(--gold); }
-.s17-lineup { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 6px; margin-bottom: 14px; }
+.s17-lineup { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; margin-bottom: 14px; }
 .s17-slot { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 8px; border: 1px dashed var(--line-2); border-radius: 12px; }
 .s17-slot.full { border-style: solid; border-color: var(--gold); background: color-mix(in srgb, var(--gold) 6%, var(--card)); animation: wr-in .3s ease-out; }
 .s17-slot small { font: var(--label-w2) 9px/1 var(--label-font); letter-spacing: 1.2px; color: var(--muted); }
@@ -600,7 +600,7 @@ a.un-plain { color: inherit; }
 .s17-facts b { color: var(--ink); font: 700 16px/1 var(--num); }
 @media (max-width: 720px) {
   .s17-modes { grid-template-columns: 1fr; }
-  .s17-lineup { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .s17-lineup { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .s17-p { grid-template-columns: auto minmax(0, 1fr) auto; }
   .s17-go { grid-column: 1 / -1; justify-content: flex-start; }
   .s17-year { font-size: 38px; } .s17-team { font-size: 21px; } .s17-wheel .tlogo { width: 52px; height: 52px; }

@@ -1,12 +1,13 @@
 // 17-0: spin a team + season (1970 to today), draft one player from that team that year into
-// your lineup (QB, RB, RB, WR, WR, TE, FLEX, SuperFlex), 8 rounds. Then the lineup plays a
+// your lineup (QB, RB, WR, WR, TE, FLEX), 6 rounds. Then the lineup plays a
 // 17-game season: each player scores his real season-total PPR, spread over 17 weeks (with good and bad weeks). No era adjustment (Max's call, Nov 3)
 // and misses as many weeks as he missed that season. Can it go 17-0?
 const crypto = require('crypto');
 const DATA = require('./data/seasons.json');
 
-const SLOTS = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX', 'SF'];
-const FITS = { QB: ['QB'], RB1: ['RB'], RB2: ['RB'], WR1: ['WR'], WR2: ['WR'], TE: ['TE'], FLEX: ['RB', 'WR', 'TE'], SF: ['QB', 'RB', 'WR', 'TE'] };
+const SLOTS = ['QB', 'RB1', 'WR1', 'WR2', 'TE', 'FLEX']; // Max's lineup, Nov 3: 1 QB, 1 RB, 2 WR, 1 TE, 1 FLEX
+const FITS = { QB: ['QB'], RB1: ['RB'], RB2: ['RB'], WR1: ['WR'], WR2: ['WR'], TE: ['TE'], FLEX: ['RB', 'WR', 'TE'], SF: ['QB', 'RB', 'WR', 'TE'] }; // RB2 and SF stay so old runs still read
+const ROUNDS = SLOTS.length;
 const YEARS = Object.keys(DATA.seasons).map(Number).sort((a, b) => a - b);
 const NAMES = {
   ARI: 'Arizona Cardinals', ATL: 'Atlanta Falcons', BAL: 'Baltimore Ravens', BUF: 'Buffalo Bills', CAR: 'Carolina Panthers', CHI: 'Chicago Bears', CIN: 'Cincinnati Bengals',
@@ -44,14 +45,14 @@ function rng(seed) {
 }
 const pick = (r, list) => list[Math.floor(r() * list.length)];
 
-// 8 rounds of spins; each round also has its re-spin (a new team that year, or the same team another year)
+// one spin per lineup spot; each round also has its re-spin (a new team that year, or the same team another year)
 function spins(mode, seed) {
   const r = rng(`spins:${mode}:${seed}`);
   const out = [];
   const used = new Set();
   const fr = mode === 'franchise' ? pick(r, Object.keys(NAMES)) : null;
   if (mode === 'decades') {
-    for (let i = 0; i < 8; i++) {
+    for (let i = 0; i < ROUNDS; i++) {
       let decade, team, guard = 0;
       do { decade = pick(r, DECADES); team = pick(r, teamsInDecade(decade)); } while (used.has(`${team}${decade}`) && guard++ < 30);
       used.add(`${team}${decade}`);
@@ -62,7 +63,7 @@ function spins(mode, seed) {
     }
     return { franchise: null, rounds: out };
   }
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < ROUNDS; i++) {
     let year, team, guard = 0;
     do {
       if (fr) { year = pick(r, yearsOf(fr)); team = fr; }
@@ -101,7 +102,7 @@ function roster(team, year, decade = false) {
 }
 
 // ---------- the season ----------
-const OPP_MEAN = 132, OPP_SD = 20, NOISE = 0.42;
+const OPP_MEAN = 93, OPP_SD = 15, NOISE = 0.42;
 function normal(r) { let u = 0, v = 0; while (!u) u = r(); while (!v) v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
 function simulate(lineup, seed) {
   const r = rng(`season:${seed}`);
@@ -120,7 +121,7 @@ function simulate(lineup, seed) {
   return { wins, losses: 17 - wins, weeks, points: +weeks.reduce((a, x) => a + x.you, 0).toFixed(1) };
 }
 
-module.exports = { DATA, SLOTS, FITS, YEARS, NAMES, DECADES, eraName, spins, roster, simulate, teamsIn, yearsOf, decadesOf, OPP_MEAN };
+module.exports = { DATA, SLOTS, FITS, ROUNDS, YEARS, NAMES, DECADES, eraName, spins, roster, simulate, teamsIn, yearsOf, decadesOf, OPP_MEAN };
 
 // ---------- the game on the server (so a 17-0 is real) ----------
 const db = require('./db');
@@ -141,7 +142,7 @@ function mount(app, { A }) {
     const picks = JSON.parse(run.picks);
     const cur = run.cur ? JSON.parse(run.cur) : null;
     const sp = spins(run.mode, run.seed).rounds[run.round] || null;
-    const out = { id: run.id, mode: run.mode, day: run.day, number: run.day ? dayNo(run.day) : null, round: run.round, picks, done: run.round >= 8,
+    const out = { id: run.id, mode: run.mode, day: run.day, number: run.day ? dayNo(run.day) : null, round: run.round, picks, done: run.round >= ROUNDS,
       franchise: run.mode === 'franchise' ? spins(run.mode, run.seed).franchise : null, mine: !run.user_id || run.user_id === meId, counted: !!run.counted };
     if (!out.done && cur) out.spin = { ...cur, name: spinName(cur), roster: roster(cur.team, cur.year, cur.decade), canTeam: !run.rerolled && !!sp?.altTeam, canYear: !run.rerolled && !!sp?.altYear };
     if (out.done) {
@@ -174,7 +175,7 @@ function mount(app, { A }) {
     const run = load(req.body?.runId);
     if (!run) { res.status(404).json({ error: 'That game doesn\'t exist.' }); return null; }
     if (run.user_id && run.user_id !== req.user?.id) { res.status(403).json({ error: 'That\'s someone else\'s game.' }); return null; }
-    if (run.round >= 8) { res.status(400).json({ error: 'This season is already over.' }); return null; }
+    if (run.round >= ROUNDS) { res.status(400).json({ error: 'This season is already over.' }); return null; }
     return run;
   };
   app.post('/api/170/respin', (req, res) => {
@@ -202,7 +203,7 @@ function mount(app, { A }) {
     const round = run.round + 1;
     const next = spins(run.mode, run.seed).rounds[round];
     db.prepare('UPDATE s17_runs SET picks=?, round=?, rerolled=0, cur=? WHERE id=?').run(JSON.stringify(picks), round, next ? JSON.stringify({ team: next.team, year: next.year, decade: !!next.decade }) : null, run.id);
-    if (round >= 8) {
+    if (round >= ROUNDS) {
       const v = view(load(run.id), req.user?.id);
       const r = v.result;
       const counted = run.mode === 'daily' && run.user_id && !db.prepare("SELECT 1 FROM s17_runs WHERE user_id=? AND mode='daily' AND day=? AND counted=1").get(run.user_id, run.day) ? 1 : 0;

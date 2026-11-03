@@ -1,5 +1,5 @@
 /* sideline live: 17-0. Spin a team and a season (1970 to today), draft one player from that team
-   that year, fill 8 spots, then watch your lineup play a 17-game season. Builds on window.SL. */
+   that year, fill 6 spots, then watch your lineup play a 17-game season. Builds on window.SL. */
 (() => {
   'use strict';
   const SL = window.SL;
@@ -8,7 +8,7 @@
   const $ = (q, el = document) => el.querySelector(q);
   const view = $('#view');
   const calm = SL.calm;
-  const SLOTS = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX', 'SF'];
+  const SLOTS = ['QB', 'RB1', 'WR1', 'WR2', 'TE', 'FLEX'];
   const LABEL = { QB: 'QB', RB1: 'RB', RB2: 'RB', WR1: 'WR', WR2: 'WR', TE: 'TE', FLEX: 'FLEX', SF: 'SUPERFLEX' };
   const FITS = { QB: ['QB'], RB1: ['RB'], RB2: ['RB'], WR1: ['WR'], WR2: ['WR'], TE: ['TE'], FLEX: ['RB', 'WR', 'TE'], SF: ['QB', 'RB', 'WR', 'TE'] };
   const MODES = {
@@ -33,14 +33,14 @@
 
   // ---------- home ----------
   async function showHome() {
-    view.innerHTML = `${pageHead('Arcade · the \'70s to today', '17-0', 'Spin a team and a decade. Draft one player.<br>Fill 8 spots. Can your lineup go 17-0?')}<div id="s17Body">${skel(3, 'cards')}</div>`;
+    view.innerHTML = `${pageHead('Arcade · the \'70s to today', '17-0', 'Spin a team and a decade. Draft one player.<br>Fill 6 spots. Can your lineup go 17-0?')}<div id="s17Body">${skel(3, 'cards')}</div>`;
     let t = null; try { t = await api('/api/170/today'); } catch { /* still playable */ }
     const el = $('#s17Body'); if (!el || !/^#\/?170\/?$/.test(location.hash)) return; // moved on while this loaded
     el.innerHTML = `<div class="s17-modes one">${Object.entries(MODES).map(([k, [e, title, line]]) => `<button type="button" class="s17-mode ${k}" data-act="s17start" data-mode="${k}"><span class="e">${e}</span><b>${title}</b><span>${line}</span></button>`).join('')}</div>
       ${t?.best ? `<div class="s17-best"><span>Your best <b>${t.best.wins}-${17 - t.best.wins}</b></span><span>Perfect seasons <b>${t.best.perfect}</b></span><span>Seasons played <b>${t.best.played}</b></span></div>` : ''}
       <section class="s17-sec s17-how"><div class="label">How it works</div><ol>
         <li>Each round spins a random <b>team and decade</b>, like the 1980s 49ers, anywhere from the 1970s to today.</li>
-        <li>Draft any player's <b>best season</b> with that team in that decade into an open spot: QB, 2 RB, 2 WR, TE, FLEX or SuperFlex (any position).</li>
+        <li>Draft any player's <b>best season</b> with that team in that decade into an open spot: QB, RB, 2 WR, TE or FLEX (RB, WR or TE).</li>
         <li>Don't like the spin? Each round you get <b>one re-spin</b>: a new team, or the same team in a different decade.</li>
         <li>Your lineup plays 17 games. Each player scores his <b>real season-total PPR points</b> from that year, spread over your 17 weeks with good and bad weeks. No era adjustment, so big modern seasons score big.</li>
         <li>Go 17-0 for the <b>Perfect 17-0</b> badge and a card pack.</li></ol></section>`;
@@ -62,7 +62,7 @@
     draw(true);
   }
   const openSlots = (run) => SLOTS.filter((s) => !run.picks.some((p) => p.slot === s));
-  // where a player can go: his own position first, then FLEX, then SuperFlex
+  // where a player can go: his own position first, then FLEX
   function slotsFor(run, pos) {
     const open = openSlots(run);
     const own = open.filter((s) => s !== 'FLEX' && s !== 'SF' && FITS[s].includes(pos)).slice(0, 1);
@@ -79,7 +79,7 @@
     if (run.done) return drawSeason(run);
     const sp = run.spin, ro = sp.roster;
     const modeTag = run.mode === 'daily' ? `Daily #${run.number}` : run.mode === 'franchise' ? 'Franchise' : run.mode === 'decades' ? 'Decades' : 'Unlimited';
-    view.innerHTML = `<div class="s17-top"><a class="s17-back" href="#/170">‹ 17-0</a><span class="label">${esc(modeTag)} · Round ${run.round + 1} of 8</span></div>
+    view.innerHTML = `<div class="s17-top"><a class="s17-back" href="#/170">‹ 17-0</a><span class="label">${esc(modeTag)} · Round ${run.round + 1} of ${SLOTS.length}</span></div>
       ${lineupBar(run)}
       <section class="s17-spin" style="--tc:${esc(SL.teamInfo(sp.team).color || '#33415a')}">
         <div class="s17-wheel" id="s17Wheel">${tlogo(sp.team)}<div><div class="s17-year">${sp.decade ? `${sp.year}s` : sp.year}</div><div class="s17-team">${esc(sp.decade ? sp.name.replace(/^\d{4}s /, '') : sp.name)}</div></div></div>

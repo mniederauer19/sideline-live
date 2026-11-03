@@ -23,7 +23,7 @@ test('the same seed gives the same spins; franchise mode stays on one team', () 
   assert.deepEqual(S.spins('daily', '2026-11-03'), S.spins('daily', '2026-11-03'));
   const f = S.spins('franchise', 'x');
   assert.ok(f.rounds.every((r) => r.team === f.franchise && !r.altTeam));
-  assert.equal(new Set(f.rounds.map((r) => r.year)).size, 8);
+  assert.equal(new Set(f.rounds.map((r) => r.year)).size, S.ROUNDS);
 });
 test('a season is 17 games and the same lineup + seed plays out the same', () => {
   const ro = S.roster('LAR', 1999);
