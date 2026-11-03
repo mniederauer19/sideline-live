@@ -1,6 +1,6 @@
 // 17-0: spin a team + season (1970 to today), draft one player from that team that year into
 // your lineup (QB, RB, RB, WR, WR, TE, FLEX, SuperFlex), 8 rounds. Then the lineup plays a
-// 17-game season: each player scores his era-adjusted points per game (with good and bad weeks)
+// 17-game season: each player scores his real season-total PPR, spread over 17 weeks (with good and bad weeks). No era adjustment (Max's call, Nov 3)
 // and misses as many weeks as he missed that season. Can it go 17-0?
 const crypto = require('crypto');
 const DATA = require('./data/seasons.json');
@@ -81,12 +81,11 @@ function rosterDecade(team, decade) {
   const best = new Map();
   for (const y of yearsOf(team).filter((x) => inDecade(x, decade))) {
     for (const p of roster(team, y).players) {
-      const value = p.adj * Math.min(1, p.g / DATA.seasons[y].g);
       const prev = best.get(p.name);
-      if (!prev || value > prev.value) best.set(p.name, { ...p, year: y, games: DATA.seasons[y].g, value });
+      if (!prev || p.ppr > prev.ppr) best.set(p.name, { ...p, year: y, games: DATA.seasons[y].g });
     }
   }
-  const players = [...best.values()].sort((a, b) => b.value - a.value).slice(0, 40).map(({ value, ...p }) => p);
+  const players = [...best.values()].sort((a, b) => b.ppr - a.ppr).slice(0, 40);
   return { team, year: decade, decade: true, name: spinName({ team, year: decade, decade: true }), games: null, players };
 }
 function roster(team, year, decade = false) {
@@ -98,26 +97,20 @@ function roster(team, year, decade = false) {
     o.id = `${year}-${team}-${o.name}`.replace(/\s+/g, '_');
     o.year = year; o.games = s.g;
     return o;
-  }) };
+  }).sort((a, b) => b.ppr - a.ppr) };
 }
 
 // ---------- the season ----------
-const OPP_MEAN = 122, OPP_SD = 20, NOISE = 0.42;
+const OPP_MEAN = 132, OPP_SD = 20, NOISE = 0.42;
 function normal(r) { let u = 0, v = 0; while (!u) u = r(); while (!v) v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
 function simulate(lineup, seed) {
   const r = rng(`season:${seed}`);
-  // which weeks each player sits (as many as he missed that season, scaled to 17 games)
-  const plays = lineup.map((p) => {
-    const playN = Math.max(1, Math.min(17, Math.round(17 * Math.min(1, p.g / p.games))));
-    const weeks = Array.from({ length: 17 }, (_, i) => i).sort(() => r() - 0.5).slice(0, playN);
-    return new Set(weeks);
-  });
+  // a player's real season total is spread over your 17 weeks (missed games are already in that total)
   const weeks = [];
   for (let w = 0; w < 17; w++) {
     let you = 0; const out = [];
     const line = lineup.map((p, i) => {
-      if (!plays[i].has(w)) { out.push(p.name); return 0; }
-      const pts = Math.max(0, p.adj * Math.exp(normal(r) * NOISE - NOISE * NOISE / 2));
+      const pts = Math.max(0, (p.ppr / 17) * Math.exp(normal(r) * NOISE - NOISE * NOISE / 2));
       you += pts; return +pts.toFixed(1);
     });
     const opp = Math.max(60, OPP_MEAN + normal(r) * OPP_SD);

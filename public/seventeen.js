@@ -42,7 +42,7 @@
         <li>Each round spins a random <b>team and decade</b>, like the 1980s 49ers, anywhere from the 1970s to today.</li>
         <li>Draft any player's <b>best season</b> with that team in that decade into an open spot: QB, 2 RB, 2 WR, TE, FLEX or SuperFlex (any position).</li>
         <li>Don't like the spin? Each round you get <b>one re-spin</b>: a new team, or the same team in a different decade.</li>
-        <li>Your lineup plays 17 games. Players score their real season, <b>era-adjusted</b> so a 1977 season counts as much as one from today, and they miss the games they missed that year.</li>
+        <li>Your lineup plays 17 games. Each player scores his <b>real season-total PPR points</b> from that year, spread over your 17 weeks with good and bad weeks. No era adjustment, so big modern seasons score big.</li>
         <li>Go 17-0 for the <b>Perfect 17-0</b> badge and a card pack.</li></ol></section>`;
   }
   SL.acts.s17start = async (t) => {
@@ -71,7 +71,7 @@
   function lineupBar(run) {
     return `<div class="s17-lineup">${SLOTS.map((s) => {
       const p = run.picks.find((x) => x.slot === s);
-      return `<div class="s17-slot ${p ? 'full' : ''}"><small>${LABEL[s]}</small>${p ? `<b>${esc(p.name)}</b><span>${p.year} ${tlogo(p.team)} ${fmt(p.adj)}/g</span>` : '<b class="s17-open">open</b>'}</div>`;
+      return `<div class="s17-slot ${p ? 'full' : ''}"><small>${LABEL[s]}</small>${p ? `<b>${esc(p.name)}</b><span>${p.year} ${tlogo(p.team)} ${fmt(p.ppr, 0)} pts</span>` : '<b class="s17-open">open</b>'}</div>`;
     }).join('')}</div>`;
   }
   function draw(animate) {
@@ -90,10 +90,10 @@
         const where = taken ? [] : slotsFor(run, p.pos);
         return `<div class="s17-p ${where.length ? '' : 'no'}"><span class="s17-ini">${esc(ini(p.name))}</span>
           <div class="s17-pi"><b>${esc(p.name)}</b><small>${sp.decade ? `<b class="s17-yr">${p.year}</b> · ` : ''}${p.pos} · ${p.g} of ${p.games || ro.games} games · ${esc(statLine(p))}</small></div>
-          <div class="s17-pts"><b>${fmt(p.adj)}</b><small>adj/g</small></div>
+          <div class="s17-pts"><b>${fmt(p.ppr, 0)}</b><small>PPR pts</small></div>
           <div class="s17-go">${taken ? '<small>On your team</small>' : where.length ? where.map((s, i) => `<button type="button" class="btn ${i ? 'ghost' : ''} sm" data-act="s17pick" data-id="${esc(p.id)}" data-slot="${s}">${i ? LABEL[s] : `Draft · ${LABEL[s]}`}</button>`).join('') : '<small>No open spot</small>'}</div></div>`;
       }).join('')}</div>
-      <p class="rules s17-note">“adj/g” is era-adjusted points per game in PPR: his points per game that season, against the average starter at his position that year, put on today's scale. ${sp.decade ? 'Each player shows his best season with this team in the decade.' : `${esc(String(ro.year))} had ${ro.games} games.`} Missed games count against you.</p>`;
+      <p class="rules s17-note">“PPR pts” is his real fantasy total for that whole season in PPR (1 per catch), with no era adjustment. ${sp.decade ? 'Each player shows his best season with this team in the decade.' : `${esc(String(ro.year))} had ${ro.games} games.`} Missed games are already in the total.</p>`;
     if (animate && !calm.matches) spinAnim(sp);
   }
   function spinAnim(sp) {
