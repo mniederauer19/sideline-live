@@ -709,7 +709,7 @@
     el.innerHTML = `${installBanner()}
       <div class="ar-grid">
         ${tile(live.length ? `#/game/${esc(live[0].id)}` : '#/feed', '📣', 'Call It', 'Guess the next play before the snap: run, short pass, deep shot or TD.', live.length ? `<span class="live">${live.length} live</span> · tap a game` : next ? `Opens at kickoff · ${esc(SL.kickoff(next))}` : 'Opens when games are live', live.length ? 'hot' : '')}
-        ${tile('#/170', '🏆', '17-0', 'Spin a team and a season from 1970 to today. Draft a lineup. Go undefeated.', 'New · daily, unlimited and franchise', 'new')}
+        ${tile('#/170', '🏆', '17-0', 'Spin a team and a season from 1970 to today. Draft a lineup. Go undefeated.', 'New · decades and unlimited', 'new')}
         ${tile('#/daily', '🧩', `Sideline Daily${d?.number ? ` #${d.number}` : ''}`, 'Name the player from a real stat line. 6 tries.', `${dailyStatus}${streak ? ` · 🔥 ${streak}` : ''}`)}
         ${tile('#/props', '🎯', 'Player props', 'Pick 2 to 5 More or Less. All hit and win up to +600.', '')}
         ${tile('#/cards', '🃏', 'Moment cards', 'Collect the week\'s biggest plays. Open packs, swap with friends.', '')}

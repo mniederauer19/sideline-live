@@ -158,7 +158,7 @@ function mount(app, { A }) {
     return out;
   }
   app.post('/api/170/start', (req, res) => {
-    const mode = ['daily', 'unlimited', 'franchise', 'decades'].includes(req.body?.mode) ? req.body.mode : 'unlimited';
+    const mode = ['unlimited', 'decades'].includes(req.body?.mode) ? req.body.mode : 'unlimited'; // Daily and Franchise were taken out Nov 3
     const day = A.etDay();
     if (mode === 'daily' && req.user) {
       const prev = db.prepare("SELECT * FROM s17_runs WHERE user_id=? AND mode='daily' AND day=? ORDER BY counted DESC, created_at DESC LIMIT 1").get(req.user.id, day);
