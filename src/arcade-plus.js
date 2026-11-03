@@ -283,6 +283,14 @@ const userByName = (name) => db.prepare('SELECT * FROM users WHERE name=? COLLAT
 
 // ======================= routes =======================
 function mount(app, { needUser, tier, record, rankOf }) {
+  // ---- someone's friends (public), for profiles here and on sidelineff.com ----
+  app.get('/api/u/:name/friends', (req, res) => {
+    const u = userByName(String(req.params.name || '').slice(0, 40));
+    if (!u) return res.json({ joined: false, friends: [], status: 'none' });
+    const friends = friendIds(u.id).map((id) => { const x = db.prepare('SELECT name FROM users WHERE id=?').get(id); return x ? { ...A.who(id), name: x.name } : null; }).filter(Boolean);
+    res.json({ joined: true, name: u.name, friends, status: friendStatus(req.user?.id, u.id), signedIn: !!req.user, me: req.user?.name || null });
+  });
+
   // ---- look people up ----
   app.get('/api/users/search', (req, res) => {
     const q = String(req.query.q || '').trim().replace(/[%_]/g, '').slice(0, 30);
