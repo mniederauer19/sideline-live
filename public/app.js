@@ -721,6 +721,8 @@
   const weekName = () => S.schedule.find((x) => x.week === (S.sel || S.week?.week))?.label || `Week ${S.sel || S.week?.week || ''}`;
   const playsShown = () => { const st = S.fstats; if (!st) return 0; return isCurrentWeek() && st.playsToday ? st.playsToday : st.playsWeek; };
   const playsWord = () => (isCurrentWeek() && S.fstats?.playsToday ? 'today' : 'this week');
+  // touchdowns: today while games are being played today, otherwise the whole week
+  const tdShown = () => { const st = S.fstats; if (!st) return 0; return isCurrentWeek() && st.playsToday ? st.tdToday || 0 : st.tdWeek || 0; };
   const nextGame = () => S.games.filter((g) => g.state === 'pre' && g.start > Date.now()).sort((a, b) => a.start - b.start)[0];
   // The headline follows the day: games live, the next kickoff, or the week wrapped up
   function feedHead() {
@@ -739,7 +741,7 @@
     if (!st) return '<div class="fs-strip fs-load" aria-hidden="true"><span class="fs-c"></span><span class="fs-c"></span><span class="fs-c"></span></div>';
     const last = (n) => String(n || '').split(' ').slice(-1)[0];
     const c = [];
-    c.push(`<span class="fs-c"><small>Plays scored ${playsWord()}</small><b id="fsPlays">${playsShown().toLocaleString()}</b></span>`);
+    c.push(`<span class="fs-c"><small>Touchdowns ${playsWord()}</small><b><span id="fsTds">${tdShown().toLocaleString()}</span> 🔥</b></span>`);
     if (st.biggest) c.push(`<button type="button" class="fs-c" data-act="comments" data-id="${esc(st.biggest.playId)}" title="${esc(st.biggest.headline)}"><small>Biggest play</small><b>${esc(last(st.biggest.name))} <em>+${fmt(st.biggest.pts)}</em></b></button>`);
     if (st.top) c.push(`<button type="button" class="fs-c" data-act="player" data-pid="${esc(st.top.id)}"><small>Top scorer</small><b>${esc(last(st.top.name))} <em>${fmt(st.top.pts)}</em></b></button>`);
     if (isCurrentWeek() && !st.live && st.next) c.push(`<span class="fs-c"><small>Next up</small><b>${esc(st.next.away)} @ ${esc(st.next.home)}</b></span>`);
@@ -769,11 +771,16 @@
   const loadFeedStatsSoon = (ms = 8000) => { clearTimeout(fstatsT); fstatsT = setTimeout(loadFeedStats, ms); };
   // the countdown ticks, and the play counter counts up as plays come in
   setInterval(() => { const cd = $('#ftCd'); if (cd) { const left = Number(cd.dataset.t) - Date.now(); if (left <= 0) renderFeedHead(); else cd.textContent = countdown(left); } }, 1000);
-  function countPlay() {
+  function countPlay(p) {
     if (!S.fstats || !isCurrentWeek()) return;
+    if (p?.td) {
+      const t0 = tdShown();
+      S.fstats.tdToday = (S.fstats.tdToday || 0) + 1; S.fstats.tdWeek = (S.fstats.tdWeek || 0) + 1;
+      const el = $('#fsTds'); if (el) { tween(el, t0, tdShown(), (v) => Math.round(v).toLocaleString(), 600); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); }
+    }
     const before = playsShown();
     S.fstats.playsToday = (S.fstats.playsToday || 0) + 1; S.fstats.playsWeek = (S.fstats.playsWeek || 0) + 1;
-    for (const id of ['fsPlays', 'ftPlays']) { const el = $(`#${id}`); if (el) { tween(el, before, playsShown(), (v) => Math.round(v).toLocaleString(), 600); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); } }
+    for (const id of ['ftPlays']) { const el = $(`#${id}`); if (el) { tween(el, before, playsShown(), (v) => Math.round(v).toLocaleString(), 600); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); } }
   }
   function showFeed() {
     S.feed.game = null;
@@ -1670,7 +1677,7 @@
       notePlays([p]);
       renderLive();
       alertFor(p);
-      if (S.gamesById.has(p.gameId)) { countPlay(); loadFeedStatsSoon(); }
+      if (S.gamesById.has(p.gameId)) { countPlay(p); loadFeedStatsSoon(); }
       if (isMine(p) && p.td && !document.hidden) { try { navigator.vibrate?.([80, 40, 160]); } catch { /* not supported */ } }
       if (S.lg.status === 'ok' && isMine(p)) lgSoon(15000);
       if (currentRoute() === 'players' && Date.now() - S.pl.at > 8000) loadPlayers();

@@ -460,7 +460,7 @@ button.fs-c:hover { border-color: var(--gold); }
 .fs-c.live { border-color: color-mix(in srgb, var(--live) 55%, var(--line)); }
 .fs-c.live b { color: var(--live); }
 .fs-load .fs-c { height: 56px; background: linear-gradient(90deg, var(--card), var(--card-2), var(--card)); background-size: 200% 100%; animation: shine 1.4s linear infinite; }
-#fsPlays.bump, #ftPlays.bump { animation: bumpn 0.6s ease-out; display: inline-block; }
+#fsTds.bump, #ftPlays.bump { animation: bumpn 0.6s ease-out; display: inline-block; }
 @keyframes bumpn { 30% { transform: scale(1.18); color: var(--pos); } }
 .my-bar { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; overflow-x: auto; scrollbar-width: none; }
 .my-bar::-webkit-scrollbar { display: none; }
@@ -482,7 +482,7 @@ button.fs-c:hover { border-color: var(--gold); }
   .fs-c b { font-size: 18px; }
   .feed-modes { gap: 8px; }
 }
-@media (prefers-reduced-motion: reduce) { .ft-live i, .fs-dot, .fs-load .fs-c, #fsPlays.bump, #ftPlays.bump { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .ft-live i, .fs-dot, .fs-load .fs-c, #fsTds.bump, #ftPlays.bump { animation: none; } }
 
 /* ---------- profiles on Live ---------- */
 .pf-head { display: grid; grid-template-columns: auto 1fr; gap: 18px; align-items: center; padding: 18px; margin-bottom: 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); }

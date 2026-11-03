@@ -225,7 +225,8 @@ app.get('/api/feed-stats', (req, res) => {
   }
   const next = games.filter((g) => g.state === 'pre' && g.start > now).sort((a, b) => a.start - b.start)[0];
   res.json({ week, live: games.filter((g) => g.state === 'in').length, games: games.length, final: games.filter((g) => g.state === 'post').length,
-    playsWeek: count(), playsToday: count('AND ts >= ?', dayStart), biggest, top: top && top.pts > 0 ? top : null,
+    playsWeek: count(), playsToday: count('AND ts >= ?', dayStart),
+    tdWeek: count(`AND data LIKE '%"td":true%'`), tdToday: count(`AND data LIKE '%"td":true%' AND ts >= ?`, dayStart), biggest, top: top && top.pts > 0 ? top : null,
     next: next ? { start: next.start, away: next.away.abbr, home: next.home.abbr } : null, now });
 });
 
