@@ -1241,7 +1241,6 @@
           <div class="tm-vs">vs</div>
           <div class="tm-side"><small>${mine.opp ? esc(mine.opp.name) : 'Bye week'}</small><b>${mine.opp && mine.opp.score != null ? fmt(mine.opp.score) : '–'}</b><span>${mine.opp ? `${oppLeft} yet to play` : ''}</span></div>
           <div class="tm-bar"><i style="width:${share}%"></i></div></div>
-        ${window.SL?.hooks?.sweat ? window.SL.hooks.sweat(A, B, mine) : ''}
         <div class="tm-grid ${B ? 'two' : ''}">${lines}</div>
         ${bench.length ? `<details class="tm-bench"><summary class="label">Bench · ${fmt(bench.reduce((a, x) => a + (x.player.score || 0), 0))} pts</summary>${bench.map((x) => `<div class="tm-row"><span class="tm-slot">${esc(x.slot || 'BN')}</span>${cell(x)}</div>`).join('')}</details>` : ''}
       </section>`;

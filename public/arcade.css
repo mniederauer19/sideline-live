@@ -197,17 +197,10 @@
 .wr-line { max-width: 440px; font: 500 16px/1.45 var(--body); color: var(--muted); }
 .wr-tap { position: absolute; bottom: 16px; font: var(--label-w) 10.5px/1 var(--label-font); letter-spacing: 2px; text-transform: uppercase; color: var(--dim); }
 
-/* ---------- league rooms + sweat meter ---------- */
-.sweat { margin: 12px 0 4px; }
-.sw-top { display: flex; align-items: baseline; gap: 10px; }
-.sw-top b { font: 700 24px/1 var(--num); color: var(--ink); }
-.sw-top em { font: 600 14px/1 var(--body); font-style: normal; color: var(--ink-2); margin-left: auto; }
-.sw-bar { position: relative; height: 10px; margin: 8px 0 6px; border-radius: 10px; background: linear-gradient(90deg, var(--neg), #e3b341 50%, var(--pos)); opacity: 0.9; }
-.sw-bar i { position: absolute; top: 50%; left: var(--p); width: 18px; height: 18px; margin: -9px 0 0 -9px; border-radius: 50%; background: var(--ink); border: 3px solid var(--bg); box-shadow: 0 1px 6px rgba(0,0,0,0.4); transition: left 0.8s cubic-bezier(.2,.8,.2,1); }
-.sweat small { color: var(--muted); font-size: 12.5px; }
+/* ---------- league rooms ---------- */
 .lg-room { margin-left: auto; align-self: center; }
 .rm-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 22px; align-items: start; }
-.rm-sweat { padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); margin-bottom: 16px; }
+.rm-score { padding: 16px; border: 1px solid var(--line); border-radius: 16px; background: var(--card); margin-bottom: 16px; }
 .rm-sec { margin-bottom: 20px; }
 .rm-sec > .label { margin-bottom: 6px; }
 .rm-ms { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; }
@@ -264,8 +257,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .dl-c, .wr-story { animation: none; }
-  .sw-bar i, .ch-bar i, .tk-bar i, .ci-bar i { transition: none; }
-}
+  }
 .du-side.empty b { font: 600 14px/1.3 var(--body); color: var(--ink-2); }
 
 /* ---------- name tags (Locker) ---------- */

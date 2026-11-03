@@ -623,32 +623,7 @@
   SL.acts.wrshare = async (t, e) => { e?.stopPropagation(); shareCanvas(await wrappedCanvas(), { text: `My ${S.wr.data.r.label} on Sideline Live`, url: linkTo('#/wrapped'), filename: 'sideline-wrapped.png' }); };
   SL.acts.wrsave = async (t, e) => { e?.stopPropagation(); saveCanvas(await wrappedCanvas(), 'sideline-wrapped.png'); };
 
-  // ================= LEAGUE ROOMS + SWEAT METER =================
-  const phi = (z) => { const t = 1 / (1 + 0.2316419 * Math.abs(z)); const d = 0.3989423 * Math.exp(-z * z / 2); const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - p : p; };
-  function teamOutlook(lu) {
-    let mean = 0, v = 0;
-    for (const sl of lu?.starters || []) {
-      const p = sl.player; if (!p) continue;
-      const sc = p.score || 0, pj = p.proj ?? 0;
-      if (p.gameState === 'final') mean += sc;
-      else if (p.gameState === 'live') { mean += sc + Math.max(0, pj - sc) * 0.5; v += 20; }
-      else { mean += pj || 0; v += 49; }
-    }
-    return { mean, v };
-  }
-  function sweatPct(A, B) {
-    const a = teamOutlook(A), b = teamOutlook(B);
-    const sd = Math.sqrt(a.v + b.v);
-    if (!sd) return { pct: a.mean > b.mean ? 100 : a.mean < b.mean ? 0 : 50, a, b };
-    return { pct: Math.round(phi((a.mean - b.mean) / sd) * 100), a, b };
-  }
-  const mood = (p) => (p >= 85 ? ['Cruising', '😎'] : p >= 60 ? ['Feeling good', '🙂'] : p >= 40 ? ['Coin flip', '😬'] : p >= 15 ? ['Sweating', '😰'] : ['Cooked', '💀']);
-  SL.hooks.sweat = (A, B, mine) => {
-    if (!B || !mine?.opp) return '';
-    const { pct, a, b } = sweatPct(A, B);
-    const [label, emoji] = mood(pct);
-    return `<div class="sweat" style="--p:${pct}%"><div class="sw-top"><span class="label">Sweat meter</span><b>${pct}%</b><em>${emoji} ${label}</em></div><div class="sw-bar"><i></i></div><small>Projected ${fmt(a.mean)} – ${fmt(b.mean)}</small></div>`;
-  };
+  // ================= LEAGUE ROOMS =================
   S.room = { id: null, last: 0, owners: new Map() };
   async function showRoom(hash) {
     const id = decodeURIComponent(hash.split('/')[2] || '');
@@ -672,7 +647,7 @@
     const A = mine ? SL.lgLineup(mine.me, week) : null, B = mine?.opp ? SL.lgLineup(mine.opp, week) : null;
     const games = (snap?.matchups || []).map((m) => `<div class="rm-m ${m.home?.isYou || m.away?.isYou ? 'you' : ''}"><span>${esc(m.away?.name || 'Bye')}</span><b>${m.away?.score != null ? fmt(m.away.score) : '–'}</b><b>${m.home?.score != null ? fmt(m.home.score) : '–'}</b><span>${esc(m.home?.name || 'Bye')}</span></div>`).join('');
     el.innerHTML = `<div class="rm-grid"><div class="rm-main">
-        ${mine && B ? `<div class="rm-sweat"><div class="tm-head"><div class="tm-side me"><small>${esc(mine.me.name)}</small><b>${fmt(mine.me.score || 0)}</b></div><div class="tm-vs">vs</div><div class="tm-side"><small>${esc(mine.opp.name)}</small><b>${fmt(mine.opp.score || 0)}</b></div></div>${SL.hooks.sweat(A, B, mine)}</div>` : ''}
+        ${mine && B ? `<div class="rm-score"><div class="tm-head"><div class="tm-side me"><small>${esc(mine.me.name)}</small><b>${fmt(mine.me.score || 0)}</b></div><div class="tm-vs">vs</div><div class="tm-side"><small>${esc(mine.opp.name)}</small><b>${fmt(mine.opp.score || 0)}</b></div></div></div>` : ''}
         <section class="rm-sec"><div class="label">Every matchup</div><div class="rm-ms">${games || '<p class="rules">No matchups this week.</p>'}</div></section>
         <section class="rm-sec"><div class="label">Everyone's players, live</div><div id="rmPlays">${skel(3, 'rows')}</div></section>
       </div>
