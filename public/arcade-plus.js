@@ -374,7 +374,7 @@
         ${stat(`${u.duels.w}-${u.duels.l}`, 'Duels')}
         ${stat(`${u.props.w}-${u.props.l}`, 'Props slips')}
         ${stat(u.cardCount, 'Moment cards')}
-        ${u.s17 ? stat(`${u.s17.best}-${17 - u.s17.best}`, '17-0 best season', `${u.s17.perfect} perfect · ${u.s17.played} played`) : ''}
+        ${u.s17 ? stat(`${u.s17.best}-${u.s17.bestL ?? 17 - u.s17.best}`, '17-0 best season', `${u.s17.perfect} perfect · ${u.s17.played} played`) : ''}
       </div>
       ${u.badges.length ? `<section class="pf-sec"><div class="label">Badges</div><div class="bdg-row">${u.badges.map((b) => `<span class="bdg" title="Earned ${new Date(b.earned_at).toLocaleDateString()}">🏅 ${esc(b.label)}</span>`).join('')}</div></section>` : ''}
       ${u.showcase.length ? `<section class="pf-sec"><div class="label">Best cards</div><div class="mc-grid pf-cards">${u.showcase.map((c) => momentCard(c, { act: 'noop' })).join('')}</div></section>` : ''}

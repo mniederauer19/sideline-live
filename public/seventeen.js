@@ -160,9 +160,9 @@
       <div class="px-panel">
         <p class="px17-kick">Unlimited · 6 rounds · the '70s to today</p>
         <h2 class="px17-h">Go undefeated</h2>
-        <p class="px17-txt">Every round spins a team and a decade, like the <b>1980s 49ers</b>. Grab any player's best season with them. Your lineup plays all 17 weeks on era-adjusted PPR points per game, so a 1977 season counts as much as one from today.</p>
+        <p class="px17-txt">Every round spins a team and a decade, like the <b>1980s 49ers</b>. Grab any player's best season with them. Your lineup plays a 14-week season, then the playoffs: quarterfinal, semifinal, championship. Win them all for 17-0. Scoring is era-adjusted PPR per game, so a 1977 season counts as much as one from today.</p>
         <button type="button" class="px-go big" data-act="s17start" data-mode="decades">▶ Start a season</button>
-        <div class="px17-stats"><div><small>Best</small><b>${b ? `${b.wins}-${17 - b.wins}` : '--'}</b></div><div><small>Perfect</small><b>${b ? b.perfect : 0}</b></div><div><small>Seasons</small><b>${b ? b.played : 0}</b></div></div>
+        <div class="px17-stats"><div><small>Best</small><b>${b ? `${b.wins}-${b.losses ?? 17 - b.wins}` : '--'}</b></div><div><small>Perfect</small><b>${b ? b.perfect : 0}</b></div><div><small>Seasons</small><b>${b ? b.played : 0}</b></div></div>
       </div>
       <div class="px-panel">
         <p class="px17-kick">How it works</p>
@@ -171,7 +171,8 @@
           <li><b>Draft.</b> Take one player's best season with that team in that decade: QB, RB, 2 WR, TE or FLEX.</li>
           <li><b>Re-spin.</b> One per round: a new team, or the same team in a new decade.</li>
           <li><b>Play.</b> Each player scores his era-adjusted PPR points per game, with hot and cold weeks, and misses the games he missed that year.</li>
-          <li><b>17-0</b> wins the Perfect 17-0 badge and a card pack.</li>
+          <li><b>Make the playoffs.</b> 14 weeks in a 12-team league. The top 8 make it. Lose once in the playoffs and you're out.</li>
+          <li><b>17-0</b> means 14-0 plus a title. It wins the Perfect 17-0 badge and a card pack.</li>
         </ol>
       </div>`);
   }
@@ -237,15 +238,18 @@
     const sp = run.spin;
     const fresh = S.s17.fresh; S.s17.fresh = false;
     const roll = animate && !calm.matches;
+    // a re-spin only rolls the reel you changed: 'team' keeps the decade, 'year' keeps the team (and its logo and colors)
+    const kind = roll ? S.s17.respin : null; S.s17.respin = null;
+    const keepTeam = kind === 'year';
     const yr = sp.decade ? `${sp.year}s` : String(sp.year), tm = sp.decade ? sp.name.replace(/^\d{4}s /, '') : sp.name;
     const pips = SLOTS.map((_, i) => `<i class="${i < run.round ? 'done' : i === run.round ? 'now' : ''}"></i>`).join('');
     paint(`${back(`<span class="px17-kick">Round ${run.round + 1} of ${SLOTS.length}</span><span class="px17-pips">${pips}</span>`)}
       ${lineupBar(run, !fresh)}
       ${power(run)}
-      <section class="px-panel px17-spin ${roll ? '' : 'set'}" id="s17Spin" style="--tc:${esc(SL.teamInfo(sp.team).color || '#3d4590')}">
+      <section class="px-panel px17-spin ${!roll || keepTeam ? 'set' : ''}" id="s17Spin" style="--tc:${esc(SL.teamInfo(sp.team).color || '#3d4590')}">
         <i class="px17-tint" aria-hidden="true"></i>
-        <p class="px17-kick">${roll ? 'Spinning…' : 'Your spin'}</p>
-        <div class="px17-reels" id="s17Wheel">
+        <p class="px17-kick">${!roll ? 'Your spin' : kind === 'team' ? 'New team…' : kind === 'year' ? `New ${sp.decade ? 'decade' : 'year'}…` : 'Spinning…'}</p>
+        <div class="px17-reels ${keepTeam ? 'landed' : ''}" id="s17Wheel">
           <div class="reel logo"><span class="q">?</span><span class="lg">${tlogo(sp.team)}</span></div>
           <div class="reel yr"><div class="rstrip"><b class="s17-year">${esc(yr)}</b></div></div>
           <div class="reel tm"><div class="rstrip"><b class="s17-team">${esc(tm)}</b></div></div>
@@ -253,12 +257,12 @@
         <div class="px17-re"><button type="button" class="px-go teal small" data-act="s17re" data-k="team" ${sp.canTeam ? '' : 'disabled'}>↻ New team</button><button type="button" class="px-go teal small" data-act="s17re" data-k="year" ${sp.canYear ? '' : 'disabled'}>↻ ${sp.decade ? 'New decade' : 'New year'}</button><small>${sp.canTeam || sp.canYear ? 'One re-spin this round' : 'Re-spin used'}</small></div>
       </section>
       <section class="px-panel px17-board ${roll ? 'wait' : 'in'}" id="s17Board">${roll ? '<p class="px17-kick">Draft board</p><p class="px17-wait">The players show up when the spin lands.</p>' : boardHtml(run, sp)}</section>`);
-    if (roll) spinAnim(run, sp, yr, tm); else { const w = $('#s17Wheel'); w?.classList.add('landed'); }
+    if (roll) spinAnim(run, sp, yr, tm, kind); else { const w = $('#s17Wheel'); w?.classList.add('landed'); }
   }
   // A slot machine: each reel is a strip of names that glides up and eases to a stop.
   // The decade stops first, then the team; only then do the logo, team colors and players appear.
   const NICK = ['Cowboys', 'Dolphins', 'Packers', 'Steelers', '49ers', 'Chiefs', 'Bills', 'Lions', 'Broncos', 'Giants', 'Raiders', 'Bears', 'Eagles', 'Rams', 'Vikings', 'Saints', 'Patriots', 'Jets', 'Colts', 'Browns', 'Bengals', 'Seahawks', 'Falcons', 'Chargers', 'Cardinals', 'Buccaneers', 'Titans', 'Jaguars', 'Ravens', 'Texans', 'Panthers', 'Commanders'];
-  function spinAnim(run, sp, yr, tm) {
+  function spinAnim(run, sp, yr, tm, kind) {
     const w = $('#s17Wheel'); if (!w) return;
     const token = (S.s17.spinToken = (S.s17.spinToken || 0) + 1);
     const pick = (list, n, not) => Array.from({ length: n }, () => { let v; do v = list[Math.floor(Math.random() * list.length)]; while (v === not); return v; });
@@ -272,10 +276,10 @@
       a.onfinish = () => { box.classList.add('stop'); buzz(8); done(); };
     });
     w.classList.add('rolling');
-    Promise.all([
-      reel('.reel.yr', pick(decs, 14, yr), 's17-year', yr, 1150),
-      reel('.reel.tm', pick(NICK, 24, tm), 's17-team', tm, 1750),
-    ]).then(() => {
+    const reels = kind === 'team' ? [reel('.reel.tm', pick(NICK, 22, tm), 's17-team', tm, 1500)]
+      : kind === 'year' ? [reel('.reel.yr', pick(decs, 16, yr), 's17-year', yr, 1400)]
+        : [reel('.reel.yr', pick(decs, 14, yr), 's17-year', yr, 1150), reel('.reel.tm', pick(NICK, 24, tm), 's17-team', tm, 1750)];
+    Promise.all(reels).then(() => {
       if (S.s17.spinToken !== token || !w.isConnected) return;
       w.classList.remove('rolling'); w.classList.add('landed');
       const spin = $('#s17Spin'); spin?.classList.add('set');
@@ -288,7 +292,7 @@
   function landed() { S.s17.st?.flash('244,196,78', 0.45); S.s17.st?.cheer(0.35); }
   SL.acts.s17re = async (t) => {
     t.disabled = true;
-    try { S.s17.run = (await api('/api/170/respin', { method: 'POST', body: { runId: S.s17.run.id, kind: t.dataset.k } })).run; draw(true); }
+    try { S.s17.run = (await api('/api/170/respin', { method: 'POST', body: { runId: S.s17.run.id, kind: t.dataset.k } })).run; S.s17.respin = t.dataset.k; draw(true); }
     catch (e) { toast(e.message); t.disabled = false; }
   };
   SL.acts.s17pick = async (t) => {
@@ -301,69 +305,114 @@
   };
 
   // ---------- the season: a scoreboard that plays out week by week ----------
-  const verdict = (w) => (w === 17 ? 'Perfect season' : w >= 15 ? 'Contender' : w >= 12 ? 'Playoff team' : w >= 9 ? 'Bubble team' : w >= 5 ? 'Rebuilding' : 'Tank job');
+  // How the season ended, in words
+  const PO = { qf: 'Quarterfinal', sf: 'Semifinal', final: 'Championship' };
+  const verdict = (r) => (r.wins === 17 ? 'Perfect season' : r.champ ? 'League champions' : r.playoff === 'final' ? 'Runner-up' : r.playoff === 'sf' ? 'Lost in the semis' : r.playoff === 'qf' ? 'Lost in the quarters' : 'Missed the playoffs');
+  const verdictCls = (r) => (r.wins === 17 || r.champ ? 'gold' : r.playoff === 'final' || r.playoff === 'sf' ? 'good' : r.playoff === 'missed' ? 'bad' : '');
+  const ord = (n) => `${n}${[, 'st', 'nd', 'rd'][n % 100 > 10 && n % 100 < 14 ? 0 : n % 10] || 'th'}`;
   function drawSeason(run) {
     const r = run.result;
-    const perfect = r.wins === 17;
+    const reg = r.weeks.filter((w) => w.stage !== 'qf' && w.stage !== 'sf' && w.stage !== 'final');
+    const po = r.weeks.filter((w) => PO[w.stage]);
     const best = r.weeks.reduce((a, w) => (w.you > a.you ? w : a), r.weeks[0]);
     const losses = r.weeks.filter((w) => !w.win).sort((a, b) => (b.you - b.opp) - (a.you - a.opp));
-    let streak = 0; for (const w of r.weeks) { if (w.win) streak++; else break; }
+    const rw = r.reg?.wins ?? reg.filter((w) => w.win).length, rl = r.reg?.losses ?? reg.length - rw;
+    const bracket = ['qf', 'sf', 'final'].map((k) => { const g = po.find((w) => w.stage === k); return `<div class="px17-wk po ${k} ${g ? (g.win ? 'w' : 'l') : 'x'}" data-stage="${k}"><small>${k === 'final' ? '🏆' : k.toUpperCase()}</small><b>${g ? (g.win ? 'W' : 'L') : '–'}</b></div>`; }).join('');
     paint(`${back('<span class="px17-kick">The season</span>')}
-      <section class="px-panel px17-sb ${perfect ? 'perfect' : ''}" id="s17Sb">
+      <section class="px-panel px17-sb ${r.wins === 17 ? 'perfect' : ''}" id="s17Sb">
         <div class="px17-sb-top"><span id="s17Wk">Kickoff</span><button type="button" class="px17-skip" data-act="s17skip">Skip ›</button></div>
         <div class="px17-rec"><b id="s17W">0</b><i>-</i><b id="s17L">0</b></div>
         <div class="px17-game" id="s17G">&nbsp;</div>
         <div class="px17-banner" id="s17B"></div>
-        <div class="px17-weeks">${r.weeks.map((w) => `<div class="px17-wk ${w.win ? 'w' : 'l'}" title="Week ${w.week}: ${fmt(w.you)} to ${fmt(w.opp)}"><small>${w.week}</small><b>${w.win ? 'W' : 'L'}</b></div>`).join('')}</div>
+        <div class="px17-label">Regular season</div>
+        <div class="px17-weeks">${reg.map((w) => `<div class="px17-wk ${w.win ? 'w' : 'l'}" title="Week ${w.week}: ${fmt(w.you)} to ${fmt(w.opp)}"><small>${w.week}</small><b>${w.win ? 'W' : 'L'}</b></div>`).join('')}</div>
+        <div class="px17-label">Playoffs <span id="s17Seed"></span></div>
+        <div class="px17-bracket">${bracket}</div>
       </section>
       <div class="px17-after" id="s17After">
-        <div class="px17-stats wide"><div><small>Season pts</small><b>${fmt(r.points, 0)}</b></div><div><small>Best week</small><b>${fmt(best.you, 0)}</b><em>W${best.week}</em></div><div><small>${losses[0] ? 'Closest loss' : 'Win streak'}</small><b>${losses[0] ? fmt(losses[0].opp - losses[0].you, 1) : 17}</b>${losses[0] ? `<em>W${losses[0].week}</em>` : ''}</div><div><small>Opening run</small><b>${streak}-0</b></div></div>
+        <div class="px17-stats wide"><div><small>Regular season</small><b>${rw}-${rl}</b></div><div><small>Seed</small><b>${r.playoff === 'missed' ? '--' : `#${r.seed}`}</b><em>${r.playoff === 'missed' ? `finished ${ord(r.seed)}` : 'made playoffs'}</em></div><div><small>Best week</small><b>${fmt(best.you, 0)}</b><em>${PO[best.stage] || `W${best.week}`}</em></div><div><small>${losses[0] ? 'Closest loss' : 'Season pts'}</small><b>${losses[0] ? fmt(losses[0].opp - losses[0].you, 1) : fmt(r.points, 0)}</b>${losses[0] ? `<em>${PO[losses[0].stage] || `W${losses[0].week}`}</em>` : ''}</div></div>
         <div class="px-panel"><p class="px17-kick">Your lineup</p>${lineupBar(run)}</div>
         <div class="px17-btns"><button type="button" class="px-go big" data-act="s17start" data-mode="decades">▶ Run it back</button><button type="button" class="px-go teal" data-act="s17share">Share my season</button><a class="px17-link" href="#/170">17-0 home</a></div>
       </div>`);
-    S.s17.play = playSeason(run);
+    S.s17.play = playSeason(run, reg, po);
   }
-  async function playSeason(run) {
+  async function playSeason(run, reg, po) {
     const r = run.result, me = run.id;
-    const tiles = [...document.querySelectorAll('.px17-wk')];
-    const W = $('#s17W'), L = $('#s17L'), wk = $('#s17Wk'), gm = $('#s17G'), bn = $('#s17B'), sb = $('#s17Sb'), after = $('#s17After');
+    const tiles = [...document.querySelectorAll('.px17-weeks .px17-wk')];
+    const ptiles = Object.fromEntries([...document.querySelectorAll('.px17-bracket .px17-wk')].map((t) => [t.dataset.stage, t]));
+    const W = $('#s17W'), L = $('#s17L'), wk = $('#s17Wk'), gm = $('#s17G'), bn = $('#s17B'), sb = $('#s17Sb'), after = $('#s17After'), seedEl = $('#s17Seed');
     const st = S.s17.st;
     let w = 0, l = 0, skip = false, snapped = false;
     S.s17.skip = () => { skip = true; };
-    const finish = () => {
-      tiles.forEach((t) => t.classList.add('show'));
-      W.textContent = r.wins; L.textContent = r.losses;
-      wk.textContent = 'Final';
-      gm.innerHTML = `<b class="px17-verdict ${r.wins === 17 ? 'gold' : r.wins >= 12 ? 'good' : r.wins < 9 ? 'bad' : ''}">${verdict(r.wins)}</b>`;
-      bn.className = 'px17-banner'; bn.textContent = r.wins === 17 ? '17-0. The whole table.' : snapped ? bn.textContent : '';
-      after.classList.add('show');
-      $('.px17-skip')?.remove();
-      if (r.wins === 17) { sb.classList.add('champ'); st?.fireworks(8); st?.cheer(1); SL.confetti?.(); buzz([30, 40, 30, 40, 80]); }
-      else if (r.wins >= 14) st?.cheer(0.8);
-    };
-    if (calm.matches) { finish(); return; }
-    for (let i = 0; i < r.weeks.length; i++) {
-      if (skip || S.s17.run?.id !== me || !tiles[i]?.isConnected) break;
-      const x = r.weeks[i];
-      wk.textContent = `Week ${x.week}`;
+    const alive = () => !skip && S.s17.run?.id === me && sb.isConnected;
+    const banner = (cls, text) => { bn.className = `px17-banner ${cls}`; bn.textContent = text; };
+    const showGame = (x) => {
       gm.innerHTML = `<span class="you">${fmt(x.you, 1)}</span><i>vs</i><span class="opp">${fmt(x.opp, 1)}</span>`;
       gm.classList.remove('hit'); void gm.offsetWidth; gm.classList.add('hit');
-      tiles[i].classList.add('show');
+    };
+    const lost = () => { sb.classList.remove('shake'); void sb.offsetWidth; sb.classList.add('shake'); st?.flash('217,85,90', 0.6); buzz(25); };
+    const finish = () => {
+      tiles.forEach((t) => t.classList.add('show')); Object.values(ptiles).forEach((t) => t.classList.add('show'));
+      W.textContent = r.wins; L.textContent = r.losses;
+      wk.textContent = 'Final';
+      seedEl.textContent = r.playoff === 'missed' ? '· missed' : `· #${r.seed} seed`;
+      gm.innerHTML = `<b class="px17-verdict ${verdictCls(r)}">${verdict(r)}</b>`;
+      banner(r.wins === 17 ? 'hot' : r.champ ? 'hot' : r.playoff === 'missed' ? 'cold' : '', r.wins === 17 ? '14-0, then three playoff wins. 17-0.' : r.champ ? `Champions as the #${r.seed} seed` : r.playoff === 'missed' ? `Finished ${ord(r.seed)} of 12. Top 8 make it.` : (() => { const g = r.weeks[r.weeks.length - 1]; return `Lost ${fmt(g.you, 1)} to ${fmt(g.opp, 1)} in the ${PO[r.playoff].toLowerCase()}`; })());
+      after.classList.add('show');
+      $('.px17-skip')?.remove();
+      if (r.champ) { sb.classList.add('champ'); st?.fireworks(r.wins === 17 ? 10 : 6); st?.cheer(1); buzz([30, 40, 30, 40, 80]); }
+    };
+    if (calm.matches) { finish(); return; }
+    // the regular season, week by week
+    for (let i = 0; i < reg.length; i++) {
+      if (!alive()) break;
+      const x = reg[i];
+      wk.textContent = `Week ${x.week}`;
+      showGame(x); tiles[i].classList.add('show');
       if (x.win) {
         W.textContent = ++w; st?.cheer(0.5 + Math.min(0.5, w / 30));
-        if (!l && w >= 5) { bn.className = 'px17-banner hot'; bn.textContent = `Undefeated · ${w}-0`; }
+        if (!l && w >= 5) banner('hot', `Undefeated · ${w}-0`);
       } else {
-        L.textContent = ++l; sb.classList.remove('shake'); void sb.offsetWidth; sb.classList.add('shake'); st?.flash('217,85,90', 0.6); buzz(25);
-        if (!snapped) { snapped = true; bn.className = 'px17-banner cold'; bn.textContent = w ? `Streak snapped in week ${x.week} at ${w}-0` : 'Lost the opener'; }
+        L.textContent = ++l; lost();
+        if (!snapped) { snapped = true; banner('cold', w ? `Streak snapped in week ${x.week} at ${w}-0` : 'Lost the opener'); }
       }
-      await sleep(i > 13 ? 430 : 270); // the last few weeks slow down for the drama
+      await sleep(270);
     }
-    if (S.s17.run?.id === me && $('#s17Sb')) finish();
+    if (!alive()) { if (S.s17.run?.id === me && sb.isConnected) finish(); return; }
+    // standings
+    await sleep(300);
+    wk.textContent = 'Standings';
+    if (r.playoff === 'missed') { gm.innerHTML = `<span class="opp">${ord(r.seed)} of 12</span>`; await sleep(500); finish(); return; }
+    seedEl.textContent = `· #${r.seed} seed`;
+    gm.innerHTML = `<span class="you">#${r.seed} seed</span>`; gm.classList.remove('hit'); void gm.offsetWidth; gm.classList.add('hit');
+    banner('hot', l ? `Playoffs! ${w}-${l} gets the #${r.seed} seed` : `14-0. Three wins from perfect.`);
+    st?.cheer(0.8); buzz(20);
+    await sleep(1300);
+    // the playoffs: one game at a time, slower, and a loss ends it
+    for (const x of po) {
+      if (!alive()) break;
+      sb.classList.add('playoff');
+      wk.textContent = PO[x.stage] + (x.oppSeed ? ` · vs #${x.oppSeed}` : '');
+      gm.innerHTML = '<span class="opp">Kickoff…</span>';
+      await sleep(650);
+      if (!alive()) break;
+      showGame(x); ptiles[x.stage]?.classList.add('show');
+      if (x.win) {
+        W.textContent = ++w; st?.cheer(1); st?.flash('244,196,78', 0.35); buzz(18);
+        banner('hot', x.stage === 'final' ? (l ? 'Champions!' : '17-0!') : l ? `Into the ${x.stage === 'qf' ? 'semis' : 'championship'}` : `Still perfect · ${w}-0`);
+      } else {
+        L.textContent = ++l; lost(); banner('cold', `Eliminated in the ${PO[x.stage].toLowerCase()}`);
+      }
+      await sleep(1100);
+    }
+    if (S.s17.run?.id === me && sb.isConnected) finish();
   }
   SL.acts.s17skip = () => { S.s17.skip?.(); };
   SL.acts.s17share = async () => {
     const run = S.s17.run, r = run.result;
-    const text = `Sideline 17-0\n${r.wins}-${r.losses}${r.wins === 17 ? ' 🏆' : ''} · ${verdict(r.wins)}\n${r.weeks.map((w) => (w.win ? '🟩' : '🟥')).join('')}\n${run.picks.map((p) => `${LABEL[p.slot]} ${p.name} '${String(p.year).slice(2)}`).join(', ')}\n${location.href.split('#')[0]}#/170`;
+    const sq = (ws) => ws.map((w) => (w.win ? '🟩' : '🟥')).join('');
+    const reg = r.weeks.filter((w) => !PO[w.stage]), po = r.weeks.filter((w) => PO[w.stage]);
+    const text = `Sideline 17-0\n${r.wins}-${r.losses}${r.champ ? ' 🏆' : ''} · ${verdict(r)}\n${sq(reg)}${po.length ? ` | ${sq(po)}` : ''}\n${run.picks.map((p) => `${LABEL[p.slot]} ${p.name} '${String(p.year).slice(2)}`).join(', ')}\n${location.href.split('#')[0]}#/170`;
     if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e.name === 'AbortError') return; } }
     try { await navigator.clipboard.writeText(text); toast('Copied. Paste it anywhere.'); } catch { prompt('Copy your season', text); }
   };

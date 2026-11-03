@@ -105,8 +105,13 @@ function roster(team, year, decade = false) {
 }
 
 // ---------- the season ----------
-const OPP_MEAN = 107, OPP_SD = 16, NOISE = 0.42;
+const OPP_MEAN = 105, OPP_SD = 16, NOISE = 0.42;
 function normal(r) { let u = 0, v = 0; while (!u) u = r(); while (!v) v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
+// The season is shaped like a fantasy league (Max's call, Nov 3): 14 regular-season weeks in a
+// 12-team league, the top 8 make the playoffs, then a quarterfinal, semifinal and championship.
+// Lose a playoff game and you're out. 17-0 means 14-0 plus three playoff wins.
+const REG_WEEKS = 14, TEAMS = 12, PLAYOFF_TEAMS = 8;
+const STAGES = [['qf', 'Quarterfinal', 3], ['sf', 'Semifinal', 5], ['final', 'Championship', 7]]; // playoff teams score a few more each round
 function simulate(lineup, seed) {
   const r = rng(`season:${seed}`);
   // which weeks each player sits (as many as he missed that season, scaled to 17 games)
@@ -114,22 +119,40 @@ function simulate(lineup, seed) {
     const playN = Math.max(1, Math.min(17, Math.round(17 * Math.min(1, p.g / p.games))));
     return new Set(Array.from({ length: 17 }, (_, i) => i).sort(() => r() - 0.5).slice(0, playN));
   });
-  const weeks = [];
-  for (let w = 0; w < 17; w++) {
+  const game = (w, boost) => {
     let you = 0; const out = [];
     const line = lineup.map((p, i) => {
       if (!plays[i].has(w)) { out.push(p.name); return 0; }
       const pts = Math.max(0, p.adj * Math.exp(normal(r) * NOISE - NOISE * NOISE / 2));
       you += pts; return +pts.toFixed(1);
     });
-    const opp = Math.max(60, OPP_MEAN + normal(r) * OPP_SD);
-    weeks.push({ week: w + 1, you: +you.toFixed(1), opp: +opp.toFixed(1), win: you > opp, out, line });
+    const opp = Math.max(60, OPP_MEAN + boost + normal(r) * OPP_SD);
+    return { week: w + 1, you: +you.toFixed(1), opp: +opp.toFixed(1), win: you > opp, out, line };
+  };
+  const weeks = [];
+  for (let w = 0; w < REG_WEEKS; w++) weeks.push({ ...game(w, 0), stage: 'reg' });
+  const regW = weeks.filter((x) => x.win).length;
+  // the other 11 teams in your league, for the standings (ties go to a coin flip)
+  const others = Array.from({ length: TEAMS - 1 }, () => { const p = 0.3 + r() * 0.4; let w = 0; for (let i = 0; i < REG_WEEKS; i++) if (r() < p) w++; return w + r() * 0.99; });
+  const mine = regW + r() * 0.99;
+  const seedNo = 1 + others.filter((x) => x > mine).length;
+  const oppSeeds = { qf: PLAYOFF_TEAMS + 1 - seedNo };
+  let playoff = 'missed';
+  if (seedNo <= PLAYOFF_TEAMS) {
+    playoff = 'champ';
+    for (const [stage, label, boost] of STAGES) {
+      const g = { ...game(weeks.length, boost), stage, label };
+      if (stage === 'qf') g.oppSeed = oppSeeds.qf;
+      weeks.push(g);
+      if (!g.win) { playoff = stage; break; }
+    }
   }
   const wins = weeks.filter((x) => x.win).length;
-  return { wins, losses: 17 - wins, weeks, points: +weeks.reduce((a, x) => a + x.you, 0).toFixed(1) };
+  return { wins, losses: weeks.length - wins, weeks, points: +weeks.reduce((a, x) => a + x.you, 0).toFixed(1),
+    reg: { wins: regW, losses: REG_WEEKS - regW }, seed: seedNo, playoff, champ: playoff === 'champ' };
 }
 
-module.exports = { DATA, SLOTS, FITS, ROUNDS, YEARS, NAMES, DECADES, eraName, spins, roster, simulate, teamsIn, yearsOf, decadesOf, OPP_MEAN };
+module.exports = { DATA, SLOTS, FITS, ROUNDS, REG_WEEKS, YEARS, NAMES, DECADES, eraName, spins, roster, simulate, teamsIn, yearsOf, decadesOf, OPP_MEAN };
 
 // ---------- the game on the server (so a 17-0 is real) ----------
 const db = require('./db');
@@ -225,11 +248,15 @@ function mount(app, { A }) {
     const day = A.etDay();
     const rows = db.prepare("SELECT user_id, wins, losses, points FROM s17_runs WHERE mode='daily' AND day=? AND counted=1 ORDER BY wins DESC, points DESC LIMIT 25").all(day);
     const mine = req.user ? db.prepare("SELECT id, wins, losses, points, finished_at FROM s17_runs WHERE user_id=? AND mode='daily' AND day=? ORDER BY counted DESC, created_at DESC LIMIT 1").get(req.user.id, day) : null;
-    const best = req.user ? db.prepare('SELECT MAX(wins) w, SUM(wins=17) perfect, COUNT(*) n FROM s17_runs WHERE user_id=? AND finished_at IS NOT NULL').get(req.user.id) : null;
+    const best = req.user ? statsFor(req.user.id) : null;
     res.json({ day, number: dayNo(day), board: rows.map((r, i) => ({ rank: i + 1, ...A.who(r.user_id), wins: r.wins, losses: r.losses, points: r.points })),
-      mine: mine ? { id: mine.id, done: !!mine.finished_at, wins: mine.wins, losses: mine.losses } : null, best: best?.n ? { wins: best.w, perfect: best.perfect || 0, played: best.n } : null, years: [YEARS[0], YEARS[YEARS.length - 1]] });
+      mine: mine ? { id: mine.id, done: !!mine.finished_at, wins: mine.wins, losses: mine.losses } : null, best: best?.n ? { wins: best.best, losses: best.bestL, perfect: best.perfect || 0, played: best.n } : null, years: [YEARS[0], YEARS[YEARS.length - 1]] });
   });
 }
-const statsFor = (userId) => db.prepare('SELECT MAX(wins) best, SUM(wins=17) perfect, COUNT(*) n FROM s17_runs WHERE user_id=? AND finished_at IS NOT NULL').get(userId);
+const statsFor = (userId) => {
+  const r = db.prepare('SELECT SUM(wins=17) perfect, COUNT(*) n FROM s17_runs WHERE user_id=? AND finished_at IS NOT NULL').get(userId);
+  const b = db.prepare('SELECT wins, losses FROM s17_runs WHERE user_id=? AND finished_at IS NOT NULL ORDER BY wins DESC, losses ASC LIMIT 1').get(userId);
+  return { ...r, best: b?.wins ?? null, bestL: b?.losses ?? null }; // best record: most wins, then fewest losses
+};
 module.exports.mount = mount;
 module.exports.statsFor = statsFor;

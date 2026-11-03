@@ -373,7 +373,7 @@ function mount(app, { needUser, tier, record, rankOf }) {
       badges: db.prepare('SELECT badge, label, earned_at FROM badges WHERE user_id=? ORDER BY earned_at DESC').all(id),
       level: l.level, xp: l.xp, cardCount: cards.length, showcase: cards.slice(0, 3), lineup,
       friend: friendStatus(req.user?.id, id), friends: friendIds(id).length,
-      s17: (() => { const r = require('./seventeen').statsFor(id); return r?.n ? { best: r.best, perfect: r.perfect || 0, played: r.n } : null; })(),
+      s17: (() => { const r = require('./seventeen').statsFor(id); return r?.n ? { best: r.best, bestL: r.bestL, perfect: r.perfect || 0, played: r.n } : null; })(),
     });
   });
 

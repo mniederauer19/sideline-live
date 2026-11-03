@@ -25,12 +25,20 @@ test('the same seed gives the same spins; franchise mode stays on one team', () 
   assert.ok(f.rounds.every((r) => r.team === f.franchise && !r.altTeam));
   assert.equal(new Set(f.rounds.map((r) => r.year)).size, S.ROUNDS);
 });
-test('a season is 17 games and the same lineup + seed plays out the same', () => {
+test('a season is 14 regular weeks then up to 3 playoff games; the same lineup + seed plays out the same', () => {
   const ro = S.roster('LAR', 1999);
-  const lineup = ro.players.slice(0, 8).map((p) => ({ ...p, games: ro.games }));
+  const lineup = ro.players.slice(0, 6).map((p) => ({ ...p, games: ro.games }));
   const a = S.simulate(lineup, 's'), b = S.simulate(lineup, 's');
-  assert.equal(a.weeks.length, 17); assert.equal(a.wins + a.losses, 17);
   assert.deepEqual(a, b);
+  for (let i = 0; i < 300; i++) {
+    const x = S.simulate(lineup, `t${i}`);
+    const reg = x.weeks.filter((w) => w.stage === 'reg'), po = x.weeks.filter((w) => w.stage !== 'reg');
+    assert.equal(reg.length, 14); assert.equal(x.wins + x.losses, x.weeks.length);
+    if (x.playoff === 'missed') assert.equal(po.length, 0);
+    else { assert.ok(x.seed <= 8); assert.deepEqual(po.map((w) => w.stage), ['qf', 'sf', 'final'].slice(0, po.length)); assert.ok(po.slice(0, -1).every((w) => w.win)); }
+    if (x.champ) assert.ok(po.length === 3 && po.every((w) => w.win));
+    if (x.wins === 17) assert.ok(x.champ && x.losses === 0);
+  }
 });
 test('decades: a team + decade, each player once with his best season', () => {
   const sp = S.spins('decades', 'z');
