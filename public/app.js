@@ -1539,7 +1539,7 @@
       </div>
       <div class="cz-sec"><span class="label">Accent color</span><div class="cz-accents" role="radiogroup">
         ${Object.entries(ACCENTS).map(([k, [dk, lt]]) => {
-          const on = (d.accent || (d.look === 'classic' ? '' : 'tan')) === k;
+          const on = (d.accent || (d.look === 'classic' ? '' : 'bone')) === k;
           return `<button type="button" class="cz-acc ${on ? 'on' : ''}" style="--sw:${d.theme === 'light' ? lt : dk}" data-act="cz" data-k="accent" data-v="${k}" role="radio" aria-checked="${on}" title="${k[0].toUpperCase() + k.slice(1)}"><i></i>${k[0].toUpperCase() + k.slice(1)}</button>`;
         }).join('')}
       </div>${d.look === 'classic' && !d.accent ? '<p class="cz-note">Classic uses lilac until you pick an accent.</p>' : ''}</div>

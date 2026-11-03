@@ -11,8 +11,9 @@
   --dim: #6f6754;
   --label: color-mix(in srgb, var(--gold) 55%, var(--muted)); /* tracked uppercase labels */
   /* accent: set by the Customize panel (light + dark value), default Tan */
-  --accent-d: #c9b78a;
-  --accent-l: #7a6a43;
+  /* default accent: Bone (white); anyone can pick another in Customize */
+  --accent-d: #e9e2d2;
+  --accent-l: #3b3527;
   --gold: var(--accent-d);  /* headlines, selected pills, PPR */
   --gold-deep: color-mix(in srgb, var(--gold) 42%, var(--bg));
   --neg: #d08a78;
