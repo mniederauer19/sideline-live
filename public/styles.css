@@ -1103,3 +1103,43 @@ html[data-look="modern"] .nav > .glide { width: 26px; height: 13px; bottom: -7px
 /* The page title block: when the note wraps under the title it stays on the right edge instead of floating mid-column */
 .page-head .aside { margin-left: auto; }
 @media (min-width: 900px) { .page-head { padding-top: 0; } .page-head .label { margin-top: 2px; } }
+
+/* ---------- game page on phones: thin sticky score bar, back button, a row to flip between games ---------- */
+.gh-back, .gh-games { display: none; }
+@media (max-width: 720px) {
+  html.on-game .strip, html.on-game .weeks { display: none; }
+  .gh-sticky { position: sticky; top: var(--hdr-h, 60px); z-index: 8; background: var(--bg); margin: 0 -16px 10px; padding: 0 16px; border-bottom: 1px solid var(--line); }
+  .gh-sticky .game-head { grid-template-columns: 30px auto 1fr auto; gap: 8px; padding: 8px 0 6px; margin: 0; border-bottom: 0; }
+  .gh-back { display: grid; place-items: center; width: 30px; height: 30px; margin-left: -6px; border-radius: 50%; color: var(--ink); text-decoration: none; font: 400 30px/1 var(--body); }
+  .gh-back:active { background: var(--card-2); }
+  .gh-sticky .gh-team { gap: 8px; }
+  .gh-sticky .gh-team .tlogo { width: 26px; height: 26px; }
+  .gh-sticky .gh-team .big { font-size: 30px; }
+  .gh-sticky .gh-team .nm { display: none; }
+  .gh-sticky .gh-mid .st { font-size: 15px; }
+  .gh-sticky .gh-mid .ln { font-size: 9px; margin-top: 2px; letter-spacing: 1px; }
+  .gh-sticky .gh-mid .ln:first-of-type:not(:last-child) { display: none; }
+  .gh-games { display: flex; gap: 6px; overflow-x: auto; padding: 0 0 8px; scrollbar-width: none; }
+  .gh-games::-webkit-scrollbar { display: none; }
+  .ghg { flex: none; display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px 4px 5px; border: 1px solid var(--line); border-radius: 999px; color: var(--ink); text-decoration: none; }
+  .ghg .tlogo { width: 18px; height: 18px; }
+  .ghg b { font: 700 12.5px/1 var(--num); font-variant-numeric: tabular-nums; }
+  .ghg i { font: var(--label-w) 9px/1 var(--label-font); font-style: normal; letter-spacing: .8px; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  .ghg.live i { color: var(--live); }
+  .ghg.on { border-color: var(--gold); background: color-mix(in srgb, var(--gold) 10%, transparent); }
+  /* Call It folds to one line; tap to open */
+  .gh-call .callit { padding: 8px 12px; margin-bottom: 10px; }
+  .gh-call .ci-top { cursor: pointer; }
+  .gh-call .ci-top::after { content: '▾'; margin-left: auto; color: var(--muted); font-size: 12px; transition: transform .2s; }
+  .gh-call.open .ci-top::after { transform: rotate(180deg); }
+  .gh-call:not(.open) .ci-bar, .gh-call:not(.open) .ci-opts, .gh-call:not(.open) .ci-msg { display: none; }
+  /* Plays: a bit smaller so more fit on screen */
+  html body .play { padding: 12px 0; }
+  html body .ppr { margin-bottom: 2px; }
+  html[data-look] body .play .ppr .v { font-size: 32px; letter-spacing: -0.5px; }
+  html body .ppr.boom { padding: 5px 9px 4px; margin-bottom: 6px; }
+  html[data-look] body .play .ppr.boom .v { font-size: 28px; }
+  html body .play .face, html body .play .initials { width: 34px; height: 34px; }
+  html body .play .pname { font-size: 21px; }
+  html body .play .headline { font-size: 14px; }
+}

@@ -332,6 +332,7 @@
     S.gamesById = new Map(list.map((g) => [g.id, g]));
     renderStrip();
     renderLive();
+    refreshGameHead();
   }
   function kickoff(g, long = false) {
     const d = new Date(g.start);
@@ -744,7 +745,21 @@
   function gameHeader(g) {
     const st = g.state === 'in' ? `<div class="st live">${esc(g.detail)}</div>` : `<div class="st">${g.state === 'post' ? 'Final' : esc(kickoff(g, true))}</div>`;
     const side = (t, o, r) => `<div class="gh-team ${r ? 'r' : ''} ${g.state === 'post' && t.score < o.score ? 'lose' : ''}"><a href="#/team/${encodeURIComponent(t.abbr)}" aria-label="${esc(t.name || t.abbr)} team page">${tlogo(t.abbr)}</a><div><div class="big">${g.state === 'pre' ? '' : t.score}</div><div class="nm"><a class="tlink" href="#/team/${encodeURIComponent(t.abbr)}">${esc(t.name)}</a> ${esc(t.record || '')}</div></div></div>`;
-    return `<div class="game-head">${side(g.away, g.home)}<div class="gh-mid">${st}<div class="ln">${esc(lineText(g))}</div>${g.state === 'in' && g.downDistance ? `<div class="ln">${esc(g.downDistance)}</div>` : ''}</div>${side(g.home, g.away, true)}</div>`;
+    return `<div class="game-head"><a class="gh-back" href="#/feed" aria-label="Back to all plays">‹</a>${side(g.away, g.home)}<div class="gh-mid">${st}<div class="ln">${esc(lineText(g))}</div>${g.state === 'in' && g.downDistance ? `<div class="ln">${esc(g.downDistance)}</div>` : ''}</div>${side(g.home, g.away, true)}</div>`;
+  }
+  // Phones: a row of every game this week under the score bar, to flip between games (live first)
+  function gameSwitcher(cur) {
+    const order = { in: 0, pre: 1, post: 2 };
+    const list = [...S.games].sort((a, b) => (order[a.state] ?? 3) - (order[b.state] ?? 3) || (a.start || 0) - (b.start || 0));
+    if (list.length < 2) return '';
+    return `<nav class="gh-games" aria-label="Games this week">${list.map((x) => `<a class="ghg ${x.id === cur ? 'on' : ''} ${x.state === 'in' ? 'live' : ''}" href="#/game/${esc(x.id)}">${tlogo(x.away.abbr)}<b>${x.state === 'pre' ? '' : x.away.score}</b><i>${x.state === 'in' ? esc(x.detail || 'Live') : x.state === 'post' ? 'F' : esc(railKick(x))}</i><b>${x.state === 'pre' ? '' : x.home.score}</b>${tlogo(x.home.abbr)}</a>`).join('')}</nav>`;
+  }
+  // Keep the score bar and the game row current as scores change
+  function refreshGameHead() {
+    if (currentRoute() !== 'game') return;
+    const g = S.gamesById.get(currentGameId()); if (!g) return;
+    const h = $('#view .game-head'); if (h) h.outerHTML = gameHeader(g);
+    const n = $('#view .gh-games'); if (n) { const x = n.scrollLeft; n.outerHTML = gameSwitcher(g.id); const m = $('#view .gh-games'); if (m) m.scrollLeft = x; }
   }
   async function showGame(id) {
     if (!S.gamesById.has(id)) {
@@ -759,7 +774,8 @@
     S.feed.game = id;
     const tabs = [['plays', 'Plays'], ['fantasy', 'Fantasy'], ['picks', 'Picks']];
     const gameCall = g.state === 'in' && window.SL?.hooks?.liveExtra ? `<div class="gh-call" data-lc="${esc(g.id)}">${window.SL.hooks.liveExtra(g)}</div>` : '';
-    view.innerHTML = `${gameHeader(g)}${gameCall}<div class="pills">${tabs.map(([k, l]) => `<button class="pill ${gameTab === k ? 'on' : ''}" data-act="gtab" data-t="${k}">${l}</button>`).join('')}</div><div id="gbody"></div>`;
+    view.innerHTML = `<div class="gh-sticky">${gameHeader(g)}${gameSwitcher(g.id)}</div>${gameCall}<div class="pills">${tabs.map(([k, l]) => `<button class="pill ${gameTab === k ? 'on' : ''}" data-act="gtab" data-t="${k}">${l}</button>`).join('')}</div><div id="gbody"></div>`;
+    const cur = $('#view .ghg.on'); if (cur) cur.scrollIntoView({ inline: 'center', block: 'nearest' });
     const body = $('#gbody');
     if (gameTab === 'plays') {
       body.innerHTML = `${filterTabs()}<div class="feed" id="feedList"></div>`;
@@ -1668,6 +1684,7 @@
     document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('on', a.dataset.nav === (navFor || r) || (r === 'game' && a.dataset.nav === 'feed') || (r === 'team' && a.dataset.nav === 'players')));
     S.pickerFor = null;
     document.documentElement.classList.remove('snap-feed');
+    document.documentElement.classList.toggle('on-game', r === 'game');
     markEnter();
     renderStrip();
     if (r === 'game') { showGame(currentGameId()); }
@@ -1682,6 +1699,10 @@
     window.scrollTo({ top: 0 });
   }
   window.addEventListener('hashchange', () => swap(route));
+  // Phones: Call It on a game page folds to one line; tap its title row to open or close it
+  document.addEventListener('click', (e) => { const t = e.target.closest('.gh-call .ci-top'); if (t) t.closest('.gh-call').classList.toggle('open'); });
+  const setHdr = () => { const h = $('.site-header'); if (h) document.documentElement.style.setProperty('--hdr-h', h.offsetHeight + 'px'); };
+  setHdr(); window.addEventListener('resize', setHdr);
 
   // ---------- shared with arcade.js (Call It, Daily, rooms, share cards...) ----------
   window.SL = Object.assign(window.SL || {}, {
