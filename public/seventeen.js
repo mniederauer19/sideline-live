@@ -10,9 +10,9 @@
   const $ = (q, el = document) => el.querySelector(q);
   const view = $('#view');
   const calm = SL.calm;
-  const SLOTS = ['QB', 'RB1', 'WR1', 'WR2', 'TE', 'FLEX'];
-  const LABEL = { QB: 'QB', RB1: 'RB', RB2: 'RB', WR1: 'WR', WR2: 'WR', TE: 'TE', FLEX: 'FLEX', SF: 'SUPERFLEX' };
-  const FITS = { QB: ['QB'], RB1: ['RB'], RB2: ['RB'], WR1: ['WR'], WR2: ['WR'], TE: ['TE'], FLEX: ['RB', 'WR', 'TE'], SF: ['QB', 'RB', 'WR', 'TE'] };
+  const SLOTS = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX', 'K', 'DST'];
+  const LABEL = { QB: 'QB', RB1: 'RB', RB2: 'RB', WR1: 'WR', WR2: 'WR', TE: 'TE', FLEX: 'FLEX', SF: 'SUPERFLEX', K: 'K', DST: 'D/ST' };
+  const FITS = { QB: ['QB'], RB1: ['RB'], RB2: ['RB'], WR1: ['WR'], WR2: ['WR'], TE: ['TE'], FLEX: ['RB', 'WR', 'TE'], SF: ['QB', 'RB', 'WR', 'TE'], K: ['K'], DST: ['DST'] };
   SL.navFor['170'] = 'arcade';
   S.s17 = { run: null, st: null };
   const num = (v) => Number(v || 0).toLocaleString();
@@ -20,6 +20,8 @@
   function statLine(p) {
     if (p.pos === 'QB') return [`${num(p.passYds)} pass yds`, `${p.passTd} TD`, `${p.int ?? 0} INT`, p.rushYds > 99 ? `${num(p.rushYds)} rush yds` : ''].filter(Boolean).join(' · ');
     if (p.pos === 'RB') return [`${num(p.rushYds)} rush yds`, `${p.rushTd + p.recTd} TD`, p.rec ? `${p.rec} rec, ${num(p.recYds)} yds` : ''].filter(Boolean).join(' · ');
+    if (p.pos === 'K') return p.est ? 'estimated from the team\'s scoring' : `${p.fgm}/${p.fga} FG · ${p.xpm} XP`;
+    if (p.pos === 'DST') return p.est ? `${fmt(p.pa, 1)} pts allowed a game · takeaways estimated` : `${p.sacks} sacks · ${p.ints + p.fr} takeaways · ${fmt(p.pa, 1)} allowed a game`;
     return [`${p.rec} rec`, `${num(p.recYds)} yds`, `${p.recTd} TD`].join(' · ');
   }
   const ini = (n) => String(n || '?').split(' ').map((w) => w[0]).join('').slice(0, 2);
@@ -169,7 +171,7 @@
         <p class="px17-kick">How it works</p>
         <ol class="px17-how">
           <li><b>Spin.</b> A random team and decade, from the 1970s to today.</li>
-          <li><b>Draft.</b> Take one player's best season with that team in that decade: QB, RB, 2 WR, TE or FLEX.</li>
+          <li><b>Draft.</b> Take one player's best season with that team in that decade: QB, 2 RB, 2 WR, TE, FLEX, a kicker or the defense.</li>
           <li><b>Re-spin.</b> One per round: a new team, or the same team in a new decade.</li>
           <li><b>Play.</b> Each player scores his real PPR points per game from that season, with hot and cold weeks, and misses the games he missed that year.</li>
           <li><b>Make the playoffs.</b> 14 weeks in a 12-team league. The top 8 make it. Lose once in the playoffs and you're out.</li>
@@ -202,7 +204,7 @@
   }
   function lineupBar(run, fresh) {
     const order = run.picks.map((p) => p.slot);
-    return `<div class="px17-line">${SLOTS.map((s) => {
+    return `<div class="px17-line">${(run.slots || SLOTS).map((s) => {
       const p = run.picks.find((x) => x.slot === s);
       const isNew = fresh && p && order[order.length - 1] === s;
       return `<div class="px17-slot ${p ? 'full' : ''} ${isNew ? 'pop' : ''}"><small>${LABEL[s]}</small>${p ? `<b>${esc(p.name)}</b><span>${tlogo(p.team)}'${String(p.year).slice(2)} · ${fmt(ppg(p), 1)}/g</span>` : '<b class="open">open</b>'}</div>`;
@@ -231,7 +233,7 @@
           <div class="pts"><b>${fmt(ppg(p), 1)}</b><small>PPG</small></div>
           <div class="go">${taken ? '<small>On your team</small>' : where.length ? where.map((s, j) => `<button type="button" class="px-go small ${j ? 'teal' : ''}" data-act="s17pick" data-id="${esc(p.id)}" data-slot="${s}">${j ? LABEL[s] : `Draft · ${LABEL[s]}`}</button>`).join('') : '<small>No open spot</small>'}</div></div>`;
       }).join('')}
-      <p class="px17-foot">PPG is his real PPR points per game that season (1 per catch, 1 per 10 yards, 6 per TD, 4 per passing TD). He sits out the games he missed that year.</p>`;
+      <p class="px17-foot">PPG is his real PPR points per game that season (1 per catch, 1 per 10 yards, 6 per TD, 4 per passing TD). Kickers: 3 per field goal, 4 from 40+, 5 from 50+, 1 per extra point. Defenses: sacks, takeaways, touchdowns and points allowed. Before 1999, kickers and defenses are estimated from the team's real scores. Everyone sits out the games he missed that year.</p>`;
   }
   function draw(animate) {
     const run = S.s17.run;
