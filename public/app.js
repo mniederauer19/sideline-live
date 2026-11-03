@@ -257,6 +257,8 @@
     loadMyLineupIds();
   }
   // ---------- sidelineff.com profiles: same avatar, name color, team, level and badge ----------
+  // Names open the person's profile here on Live (which links on to their sidelineff.com profile)
+  const liveProfile = (name) => `#/u/${encodeURIComponent(name)}`;
   const profileUrl = (username) => (S.auth?.profileBase ? `${S.auth.profileBase}${encodeURIComponent(username)}` : null);
   function avatarHtml(u, size = 28) {
     const a = u?.avatar, st = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px`;
@@ -266,8 +268,8 @@
   }
   // "username [team] Lv 3 [Badge]", linking to their public profile on sidelineff.com
   function userTag(u, fallbackName, { link = true } = {}) {
-    if (!u?.username) return `<b class="un-plain">${esc(fallbackName || 'player')}</b>`;
-    const url = link ? profileUrl(u.username) : null;
+    if (!u?.username) return link && fallbackName ? `<a class="un un-link un-plain" href="${liveProfile(fallbackName)}"><b>${esc(fallbackName)}</b></a>` : `<b class="un-plain">${esc(fallbackName || 'player')}</b>`;
+    const url = link ? liveProfile(u.username) : null;
     const inner = `<b style="${u.color ? `color:${esc(u.color)}` : ''}">${esc(u.username)}</b>${u.team ? `<span class="un-team">${tlogo(u.team)}</span>` : ''}${u.level != null ? `<span class="un-lvl" title="Level ${esc(u.level)}${u.title ? ` · ${esc(u.title)}` : ''}">Lv ${esc(u.level)}</span>` : ''}${u.shown?.label ? `<span class="un-badge">${esc(u.shown.label)}</span>` : ''}`;
     return url ? `<a class="un un-link" href="${esc(url)}" title="See ${esc(u.username)}'s profile">${inner}</a>` : `<span class="un">${inner}</span>`;
   }
@@ -1335,7 +1337,7 @@
     const r = await api('/api/leaderboard');
     view.innerHTML = `${pageHead('Season · free picks', 'Ranks', 'Ranked by credits<br>Everyone starts with 1,000')}
       <table class="box ranks"><thead><tr><th style="width:44px">#</th><th>Player</th><th class="num">Record</th><th class="num">Credits</th></tr></thead><tbody>
-      ${r.rows.map((u) => `<tr class="${u.me ? 'me' : ''}"><td>${u.rank}</td><td><div class="nm rk-who">${u.profile ? avatarHtml(u.profile, 26) : ''}${u.profile ? userTag(u.profile, u.name) : esc(u.name)}</div><div class="tier">${esc(u.tier)}</div></td><td class="num">${u.record.w}-${u.record.l}${u.record.p ? `-${u.record.p}` : ''}</td><td class="num pp">${u.credits.toLocaleString()}</td></tr>`).join('')
+      ${r.rows.map((u) => `<tr class="${u.me ? 'me' : ''}"><td>${u.rank}</td><td><div class="nm rk-who">${u.profile ? avatarHtml(u.profile, 26) : ''}${userTag(u.profile, u.name)}</div><div class="tier">${esc(u.tier)}</div></td><td class="num">${u.record.w}-${u.record.l}${u.record.p ? `-${u.record.p}` : ''}</td><td class="num pp">${u.credits.toLocaleString()}</td></tr>`).join('')
         || '<tr><td colspan="4" class="sub">No one has joined yet.</td></tr>'}
       </tbody></table>`;
   }
@@ -1609,10 +1611,10 @@
   $('#meBtn').addEventListener('click', () => {
     if (!S.me) return requireUser();
     const pr = S.me.profile;
-    if (!pr) { location.hash = '#/ranks'; return; }
+    if (!pr) { location.hash = liveProfile(S.me.name); return; }
     openSheet('Your account', `<div class="acct-card">${avatarHtml(pr, 56)}<div>${userTag(pr, S.me.name)}${pr.title ? `<div class="sub">${esc(pr.title)}</div>` : ''}</div></div>
       <div class="acct-stats"><div><b>${S.me.credits.toLocaleString()}</b><span>Credits</span></div><div><b>#${S.me.rank}</b><span>${esc(S.me.tier)}</span></div><div><b>${S.me.record.w}-${S.me.record.l}${S.me.record.p ? `-${S.me.record.p}` : ''}</b><span>Picks record</span></div></div>
-      <div class="acct-links">${profileUrl(pr.username) ? `<a class="btn" href="${esc(profileUrl(pr.username))}">Your public profile</a>` : ''}<a class="btn ghost" href="/account">Edit profile</a><a class="btn ghost" href="#/ranks" data-close>Ranks</a></div>
+      <div class="acct-links"><a class="btn" href="${liveProfile(S.me.name)}" data-close>Your profile</a><a class="btn ghost" href="/account">Edit profile</a><a class="btn ghost" href="#/ranks" data-close>Ranks</a></div>
       <div id="acctExtra"></div>
       <p class="rules">Same account and profile as sidelineff.com. Change your photo, color or badge there and it shows here too.</p>`);
     window.SL?.hooks?.account?.();
@@ -1750,7 +1752,7 @@
 
   // ---------- shared with arcade.js (Call It, Daily, rooms, share cards...) ----------
   window.SL = Object.assign(window.SL || {}, {
-    S, api, esc, fmt, signed, money, toast, openSheet, closeSheet, requireUser, tlogo, logoSrc, face, avatarHtml, userTag, profileUrl,
+    S, api, esc, fmt, signed, money, toast, openSheet, closeSheet, requireUser, tlogo, logoSrc, face, avatarHtml, userTag, profileUrl, liveProfile,
     pageHead, skel, markEnter, refreshAnim, swap, tween, teamInfo, primaryOf, adj, adjToday, unit, playCard, isMine, findPlay,
     currentRoute, kick, kickoff, ago, loadLeagues, lgMine, lgLineup, lgPid, lgWeek, weekLabel, isCurrentWeek, onMainSite, mainGet,
     openComments, openPlayer, renderFeedList, renderLive, loadMe, renderMe, renderSide, refreshGames, glideSoon, ls, calm, API,

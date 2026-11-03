@@ -4,7 +4,7 @@
   'use strict';
   const SL = window.SL;
   if (!SL) return;
-  const { S, api, esc, fmt, toast, openSheet, closeSheet, requireUser, face, pageHead, skel, refreshAnim } = SL;
+  const { S, api, esc, fmt, toast, openSheet, closeSheet, requireUser, face, pageHead, skel, refreshAnim, avatarHtml } = SL;
   const $ = (q, el = document) => el.querySelector(q);
   const view = $('#view');
   const ls = SL.ls;
@@ -343,5 +343,47 @@
   // load your level/theme once you're known
   setTimeout(() => { if (S.me) loadLocker(); }, 1500);
 
-  Object.assign(SL.routes, { props: showProps, cards: showCards, trade: showTrade, locker: showLocker });
+  // ================= PROFILES =================
+  // Anyone's profile on Live: record, credits, streaks, receipts, badges, best cards, this week's lineup
+  async function showProfile(hash) {
+    const name = decodeURIComponent(hash.split('/')[2] || '');
+    view.innerHTML = `${pageHead('Profile', esc(name) || 'Profile')}<div id="pfBody">${skel(4, 'cards')}</div>`;
+    let u;
+    try { u = await api(`/api/u/${encodeURIComponent(name)}`); }
+    catch (e) {
+      const main = SL.profileUrl(name);
+      $('#pfBody').innerHTML = `<div class="empty"><b>${esc(e.message)}</b>${main ? `<a href="${esc(main)}">See their sidelineff.com profile</a>` : '<a href="#/ranks">Ranks</a>'}</div>`;
+      return;
+    }
+    const el = $('#pfBody'); if (!el) return;
+    const pr = u.profile, main = pr?.username ? SL.profileUrl(pr.username) : null;
+    $('.page-head h1').innerHTML = esc(pr?.username || u.name);
+    const rec = u.record, pct = (a, b) => (a + b ? `${Math.round(a / (a + b) * 100)}%` : '–');
+    const stat = (big, label, sub = '') => `<div class="pf-s"><b>${big}</b><span>${label}</span>${sub ? `<small>${sub}</small>` : ''}</div>`;
+    const since = u.joined ? new Date(u.joined).toLocaleDateString([], { month: 'short', year: 'numeric' }) : '';
+    el.innerHTML = `<section class="pf-head">${avatarHtml(pr || { username: u.name }, 84)}
+        <div class="pf-id"><div class="pf-name">${SL.nameTag({ name: u.name, profile: pr, tag: u.tag, level: u.level })}</div>
+          <div class="sub">${[pr?.title, `Live level ${u.level}`, since ? `on Live since ${since}` : ''].filter(Boolean).map(esc).join(' · ')}</div>
+          <div class="share-btns">${main ? `<a class="btn ghost" href="${esc(main)}">sidelineff.com profile ↗</a>` : ''}${u.me ? '<a class="btn ghost" href="#/locker">Locker</a><a class="btn ghost" href="/account">Edit profile</a>' : ''}<button class="btn ghost" type="button" data-act="pf-share">Share profile</button></div></div></section>
+      <div class="pf-grid">
+        ${stat(u.credits.toLocaleString(), 'Credits', `#${u.rank} · ${esc(u.tier)}`)}
+        ${stat(`${rec.w}-${rec.l}${rec.p ? `-${rec.p}` : ''}`, 'Winner picks', pct(rec.w, rec.l))}
+        ${stat(`${u.callit.right}/${u.callit.called}`, 'Plays called', `best streak 🔥 ${u.callit.best}`)}
+        ${stat(`🔥 ${u.daily.streak}`, 'Daily streak', `${u.daily.solved} solved`)}
+        ${stat(`${u.takes.hit}-${u.takes.miss}`, 'Take receipts', 'hit-miss')}
+        ${stat(`${u.duels.w}-${u.duels.l}`, 'Duels')}
+        ${stat(`${u.props.w}-${u.props.l}`, 'Props slips')}
+        ${stat(u.cardCount, 'Moment cards')}
+      </div>
+      ${u.badges.length ? `<section class="pf-sec"><div class="label">Badges</div><div class="bdg-row">${u.badges.map((b) => `<span class="bdg" title="Earned ${new Date(b.earned_at).toLocaleDateString()}">🏅 ${esc(b.label)}</span>`).join('')}</div></section>` : ''}
+      ${u.showcase.length ? `<section class="pf-sec"><div class="label">Best cards</div><div class="mc-grid pf-cards">${u.showcase.map((c) => momentCard(c, { act: 'noop' })).join('')}</div></section>` : ''}
+      ${u.lineup ? `<section class="pf-sec"><div class="label">Week ${u.lineup.week} lineup · ${fmt(u.lineup.total)} pts</div><div class="pf-lu">${u.lineup.players.map((x) => `<div class="pf-lp">${face(x, 'face sm')}<span>${esc(x.name)}<small>${esc(x.slot.replace(/\d/, ''))} · ${esc(x.team)}</small></span><b>${x.state === 'pre' ? '–' : fmt(x.points)}</b></div>`).join('')}</div></section>` : ''}
+      ${u.takes.recent.length ? `<section class="pf-sec"><div class="label">Hot takes</div>${u.takes.recent.map((t) => `<div class="pf-take"><p>“${esc(t.body)}”</p><span class="tk-stamp ${t.result || ''}">${t.result === 'hit' ? 'HIT ✅' : t.result === 'miss' ? 'MISS ❌' : t.result === 'unsettled' ? 'Unsettled' : Date.now() < t.settle_at ? 'Open' : 'Being graded'}</span></div>`).join('')}<a class="foot" href="#/takes">All takes →</a></section>` : ''}`;
+    S.pfName = pr?.username || u.name;
+    refreshAnim($('.pf-grid'));
+  }
+  SL.acts['pf-share'] = () => shareLink(linkTo(`#/u/${encodeURIComponent(S.pfName || '')}`), `${S.pfName} on Sideline Live`);
+  SL.navFor.u = 'ranks';
+
+  Object.assign(SL.routes, { props: showProps, cards: showCards, trade: showTrade, locker: showLocker, u: showProfile });
 })();

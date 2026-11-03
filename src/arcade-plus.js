@@ -265,7 +265,43 @@ function lockerOf(userId, fresh = false) {
 A.whoExtras.push((id) => { const l = lockerOf(id); return { tag: l.equipped.tag, level: l.level }; });
 
 // ======================= routes =======================
-function mount(app, { needUser }) {
+function mount(app, { needUser, tier, record, rankOf }) {
+  // ---- public profiles on Live: everything someone has done here ----
+  app.get('/api/u/:name', (req, res) => {
+    const name = String(req.params.name || '').slice(0, 40);
+    const u = db.prepare('SELECT * FROM users WHERE name=? COLLATE NOCASE').get(name)
+      || db.prepare("SELECT * FROM users WHERE json_extract(profile, '$.username')=? COLLATE NOCASE").get(name);
+    if (!u) return res.status(404).json({ error: `${name} hasn't played on Sideline Live yet.` });
+    const id = u.id, n = (sql, ...a) => db.prepare(sql).get(...a)?.n || 0;
+    const calls = db.prepare("SELECT result FROM callit WHERE user_id=? AND result IN ('win','loss') ORDER BY created_at, id").all(id);
+    let run = 0, best = 0; for (const c of calls) { run = c.result === 'win' ? run + 1 : 0; best = Math.max(best, run); }
+    const daily = db.prepare('SELECT day, solved FROM daily_results WHERE user_id=? AND done=1 ORDER BY day DESC').all(id);
+    let dStreak = 0; { const solved = new Set(daily.filter((d) => d.solved).map((d) => d.day)); let d = A.etDay(); const prev = (x) => A.etDay(Date.parse(`${x}T12:00:00Z`) - 86400e3);
+      if (!solved.has(d)) d = prev(d); while (solved.has(d)) { dStreak++; d = prev(d); } }
+    const w = A.cur();
+    const lu = db.prepare('SELECT * FROM lineups WHERE user_id=? AND season=? AND week=?').get(id, w.season, w.week);
+    let lineup = null;
+    if (lu) {
+      const pts = A.weekPoints(w.week, w.season);
+      const players = JSON.parse(lu.players).map((x) => { const nv = nflverse.get(x.id), p = pts.get(String(x.id)); return { slot: x.slot, id: String(x.id), name: nv?.name || 'Player', pos: nv?.pos || '', team: nv?.team || '', headshot: nv?.headshot || '', points: p?.ppr || 0, state: p?.state || 'pre' }; });
+      lineup = { week: w.week, salary: lu.salary, players, total: +players.reduce((a, p) => a + p.points, 0).toFixed(2) };
+    }
+    const cards = db.prepare('SELECT * FROM cards WHERE user_id=?').all(id).map(cardView).sort((a, b) => RARITY_ORDER[a.rarity] - RARITY_ORDER[b.rarity] || b.pts - a.pts);
+    const takes = db.prepare('SELECT id, body, horizon, created_at, settle_at, result FROM takes WHERE user_id=? ORDER BY id DESC LIMIT 5').all(id);
+    const l = lockerOf(id);
+    res.json({
+      name: u.name, me: req.user?.id === id, joined: u.created_at, ...A.who(id),
+      credits: u.credits, tier: tier(u.credits), rank: rankOf(u.credits), record: record(id),
+      callit: { called: calls.length, right: calls.filter((c) => c.result === 'win').length, best },
+      daily: { solved: daily.filter((d) => d.solved).length, played: daily.length, streak: dStreak },
+      takes: { hit: n("SELECT COUNT(*) n FROM takes WHERE user_id=? AND result='hit'", id), miss: n("SELECT COUNT(*) n FROM takes WHERE user_id=? AND result='miss'", id), recent: takes },
+      duels: { w: n("SELECT COUNT(*) n FROM duels WHERE (from_user=? AND result='from') OR (to_user=? AND result='to')", id, id), l: n("SELECT COUNT(*) n FROM duels WHERE (from_user=? AND result='to') OR (to_user=? AND result='from')", id, id) },
+      props: { w: n("SELECT COUNT(*) n FROM prop_slips WHERE user_id=? AND result='win'", id), l: n("SELECT COUNT(*) n FROM prop_slips WHERE user_id=? AND result='loss'", id) },
+      badges: db.prepare('SELECT badge, label, earned_at FROM badges WHERE user_id=? ORDER BY earned_at DESC').all(id),
+      level: l.level, xp: l.xp, cardCount: cards.length, showcase: cards.slice(0, 3), lineup,
+    });
+  });
+
   engine.bus.on('game', (g) => { try { checkRedZone(engine.games.get(g.id) || g); } catch (e) { console.warn('[redzone]', e.message); } });
   engine.bus.on('games', (list) => { for (const g of list || []) { try { checkRedZone(g); } catch { /* ignore */ } } });
 
