@@ -333,6 +333,7 @@
     renderStrip();
     renderLive();
     refreshGameHead();
+    renderFeedHead();
   }
   function kickoff(g, long = false) {
     const d = new Date(g.start);
@@ -727,16 +728,79 @@
     }
     el.innerHTML = html;
   }
+  // ---------- top of the Plays page: a headline for the moment, live numbers, your teams ----------
+  S.fstats = null;
+  const countdown = (ms) => { const t = Math.max(0, Math.floor(ms / 1000)); const d = Math.floor(t / 86400), h = Math.floor(t % 86400 / 3600), m = Math.floor(t % 3600 / 60); return d ? `${d}d ${h}h` : h ? `${h}h ${m}m` : `${m}m ${String(t % 60).padStart(2, '0')}s`; };
+  const weekName = () => S.schedule.find((x) => x.week === (S.sel || S.week?.week))?.label || `Week ${S.sel || S.week?.week || ''}`;
+  const playsShown = () => { const st = S.fstats; if (!st) return 0; return isCurrentWeek() && st.playsToday ? st.playsToday : st.playsWeek; };
+  const playsWord = () => (isCurrentWeek() && S.fstats?.playsToday ? 'today' : 'this week');
+  const nextGame = () => S.games.filter((g) => g.state === 'pre' && g.start > Date.now()).sort((a, b) => a.start - b.start)[0];
+  // The headline follows the day: games live, the next kickoff, or the week wrapped up
+  function feedHead() {
+    const live = isCurrentWeek() ? S.games.filter((g) => g.state === 'in').length : 0;
+    const next = isCurrentWeek() ? nextGame() : null;
+    const allDone = S.games.length && S.games.every((g) => g.state === 'post');
+    let label = weekLabel(), title;
+    if (live) { label += ' · <span class="ft-live"><i></i>Live</span>'; title = `${live} game${live > 1 ? 's' : ''} live · <span id="ftPlays">${playsShown().toLocaleString()}</span> plays scored`; }
+    else if (next) { label += ` · Next up: ${esc(next.away.abbr)} @ ${esc(next.home.abbr)}`; title = `Next kickoff in <span id="ftCd" data-t="${next.start}">${countdown(next.start - Date.now())}</span>`; }
+    else if (allDone) title = `${esc(weekName())} is in the books`;
+    else title = 'Every play, scored live';
+    return { label, title };
+  }
+  function statsStrip() {
+    const st = S.fstats;
+    if (!st) return '<div class="fs-strip fs-load" aria-hidden="true"><span class="fs-c"></span><span class="fs-c"></span><span class="fs-c"></span></div>';
+    const last = (n) => String(n || '').split(' ').slice(-1)[0];
+    const c = [];
+    c.push(`<span class="fs-c"><small>Plays scored ${playsWord()}</small><b id="fsPlays">${playsShown().toLocaleString()}</b></span>`);
+    if (st.biggest) c.push(`<button type="button" class="fs-c" data-act="comments" data-id="${esc(st.biggest.playId)}" title="${esc(st.biggest.headline)}"><small>Biggest play</small><b>${esc(last(st.biggest.name))} <em>+${fmt(st.biggest.pts)}</em></b></button>`);
+    if (st.top) c.push(`<button type="button" class="fs-c" data-act="player" data-pid="${esc(st.top.id)}"><small>Top scorer</small><b>${esc(last(st.top.name))} <em>${fmt(st.top.pts)}</em></b></button>`);
+    if (isCurrentWeek() && !st.live && st.next) c.push(`<span class="fs-c"><small>Next up</small><b>${esc(st.next.away)} @ ${esc(st.next.home)}</b></span>`);
+    if (!isCurrentWeek() || !st.live) c.push(`<span class="fs-c"><small>Games</small><b>${st.final}/${st.games} final</b></span>`);
+    return `<div class="fs-strip">${c.join('')}</div>`;
+  }
+  // Your synced matchups, right on the Plays page
+  function myBar() {
+    if (S.lg.status !== 'ok' || !isCurrentWeek()) return '';
+    const rows = lgSorted().filter((r) => r.mine?.opp);
+    if (!rows.length) return '';
+    return `<div class="my-bar"><span class="label">Your teams</span>${rows.map(({ l, mine, diff, live }) => `<a class="mb-c ${diff > 0 ? 'up' : diff < 0 ? 'down' : ''}" href="#/leagues" title="${esc(l.name)}"><span>${esc(l.name)}</span><b>${fmt(mine.me.score || 0)}<i>–</i>${fmt(mine.opp.score || 0)}</b>${live ? `<small>${live} playing</small>` : ''}</a>`).join('')}</div>`;
+  }
+  function renderFeedHead() {
+    if (currentRoute() !== 'feed' && currentRoute() !== '') return;
+    const h = feedHead(), l = $('#ftLabel'), t = $('#ftTitle');
+    if (l && l.innerHTML !== h.label) l.innerHTML = h.label;
+    if (t && t.innerHTML !== h.title) t.innerHTML = h.title;
+    const fs = $('#fsStrip'); if (fs) fs.innerHTML = statsStrip();
+    const mb = $('#myBar'); if (mb) mb.innerHTML = myBar();
+  }
+  async function loadFeedStats() {
+    try { S.fstats = await api(`/api/feed-stats${S.sel ? `?week=${S.sel}` : ''}`); } catch { /* keep the last numbers */ }
+    renderFeedHead();
+  }
+  let fstatsT;
+  const loadFeedStatsSoon = (ms = 8000) => { clearTimeout(fstatsT); fstatsT = setTimeout(loadFeedStats, ms); };
+  // the countdown ticks, and the play counter counts up as plays come in
+  setInterval(() => { const cd = $('#ftCd'); if (cd) { const left = Number(cd.dataset.t) - Date.now(); if (left <= 0) renderFeedHead(); else cd.textContent = countdown(left); } }, 1000);
+  function countPlay() {
+    if (!S.fstats || !isCurrentWeek()) return;
+    const before = playsShown();
+    S.fstats.playsToday = (S.fstats.playsToday || 0) + 1; S.fstats.playsWeek = (S.fstats.playsWeek || 0) + 1;
+    for (const id of ['fsPlays', 'ftPlays']) { const el = $(`#${id}`); if (el) { tween(el, before, playsShown(), (v) => Math.round(v).toLocaleString(), 600); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump'); } }
+  }
   function showFeed() {
     S.feed.game = null;
-    const games = S.games.length, done = S.games.filter((g) => g.state === 'post').length;
-    const aside = isCurrentWeek() ? 'Standard PPR · updated every play<br>Plays from ESPN · season stats from nflverse'
-      : `Standard PPR · ${games} games${done && done < games ? `, ${done} final` : done ? ', all final' : ''}<br>Plays from ESPN · season stats from nflverse`;
+    const h = feedHead();
     const modeSeg = `<div class="feed-modes"><span class="fmt-seg mode-seg" role="radiogroup" aria-label="Layout"><button type="button" class="${S.feed.mode !== 'swipe' ? 'on' : ''}" data-act="feedmode" data-v="list">List</button><button type="button" class="${S.feed.mode === 'swipe' ? 'on' : ''}" data-act="feedmode" data-v="swipe">Swipe</button></span>
+      ${fmtSeg()}
       <button type="button" class="pill just-mine ${S.feed.filter === 'team' ? 'on' : ''}" data-act="justmine" title="Only plays from players on your synced teams">Just my players</button></div>`;
-    view.innerHTML = `${pageHead(`${weekLabel()}${isCurrentWeek() ? ' · Live' : ''}`, 'Every play, in PPR', `${aside}<div class="fmt-row">${fmtSeg()}</div>`)}<section id="liveNow" class="live-now" hidden></section>${modeSeg}${filterTabs()}<div class="feed" id="feedList"></div>`;
+    view.innerHTML = `<div class="page-head feed-head"><div><div class="label" id="ftLabel">${h.label}</div><h1 id="ftTitle">${h.title}</h1></div></div>
+      <div id="fsStrip">${statsStrip()}</div><div id="myBar">${myBar()}</div>
+      <section id="liveNow" class="live-now" hidden></section>${modeSeg}${filterTabs()}<div class="feed" id="feedList"></div>
+      <p class="rules feed-credit">Standard PPR unless you switch it · plays from ESPN · season stats from nflverse</p>`;
     renderLive();
     loadFeed();
+    loadFeedStats();
   }
 
   // ---------- game view ----------
@@ -1216,7 +1280,7 @@
   let lgTimer = null;
   function lgSoon(ms = 15000) {
     clearTimeout(lgTimer);
-    lgTimer = setTimeout(async () => { await loadLeagues(); if (currentRoute() === 'leagues') drawLeagues(); if ($('#feedList')) renderFeedList(); }, ms);
+    lgTimer = setTimeout(async () => { await loadLeagues(); if (currentRoute() === 'leagues') drawLeagues(); if ($('#feedList')) renderFeedList(); renderFeedHead(); }, ms);
   }
   setInterval(() => { if (S.lg.status === 'ok' && S.games.some((g) => g.state === 'in')) lgSoon(0); }, 60000);
 
@@ -1431,7 +1495,7 @@
         case 'player': e.preventDefault(); openPlayer(t.dataset.pid); break;
         case 'fmt': {
           S.fmt = t.dataset.v; ls.set('sl-scoring', S.fmt); ls.set('sl-scoring-set', '1');
-          document.querySelectorAll('.fmt-seg button').forEach((b) => { b.classList.toggle('on', b.dataset.v === S.fmt); b.setAttribute('aria-checked', b.dataset.v === S.fmt); });
+          document.querySelectorAll('.fmt-seg:not(.mode-seg) button').forEach((b) => { b.classList.toggle('on', b.dataset.v === S.fmt); b.setAttribute('aria-checked', b.dataset.v === S.fmt); });
           swap(() => { if ($('#feedList')) renderFeedList(); if ($('#plList')) drawPlayers(); if (currentRoute() === 'team') drawTeam(); renderLive(); });
           break;
         }
@@ -1621,6 +1685,7 @@
       notePlays([p]);
       renderLive();
       alertFor(p);
+      if (S.gamesById.has(p.gameId)) { countPlay(); loadFeedStatsSoon(); }
       if (isMine(p) && p.td && !document.hidden) { try { navigator.vibrate?.([80, 40, 160]); } catch { /* not supported */ } }
       if (S.lg.status === 'ok' && isMine(p)) lgSoon(15000);
       if (currentRoute() === 'players' && Date.now() - S.pl.at > 8000) loadPlayers();
@@ -1719,6 +1784,6 @@
     renderSide();
     connect();
     setTimeout(preloadPastWeeks, 2500);
-    loadLeagues().then(() => { if (S.myFantasyIds.size && $('#feedList')) renderFeedList(); }).catch(() => {});
+    loadLeagues().then(() => { if (S.myFantasyIds.size && $('#feedList')) renderFeedList(); renderFeedHead(); }).catch(() => {});
   })();
 })();

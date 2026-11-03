@@ -201,6 +201,34 @@ app.get('/api/leaders', (req, res) => {
   res.json({ players: players.slice(0, 25) });
 });
 
+// The top of the Plays page: games live, plays scored today and this week, the biggest play,
+// the top scorer and the next kickoff
+app.get('/api/feed-stats', (req, res) => {
+  const week = weekOf(req), games = engine.listGames(week), ids = games.map((g) => g.id), now = Date.now();
+  const ph = ids.map(() => '?').join(',');
+  const dayStart = arcade.etDayStart(arcade.etDay(now));
+  const count = (extra = '', ...args) => (ids.length ? db.prepare(`SELECT COUNT(*) n FROM plays WHERE game_id IN (${ph}) ${extra}`).get(...ids, ...args).n : 0);
+  let biggest = null;
+  if (ids.length) {
+    const row = db.prepare(`SELECT data FROM plays WHERE game_id IN (${ph}) ORDER BY ppr DESC, ts DESC LIMIT 1`).get(...ids);
+    if (row) {
+      const p = JSON.parse(row.data);
+      const x = p.players.find((y) => String(y.id) === String(p.lead)) || p.players.find((y) => y.pos !== 'DST' && y.role !== 'target') || p.players[0];
+      if (x && p.ppr > 0) biggest = { playId: p.id, name: x.name, pts: p.ppr, headline: p.headline };
+    }
+  }
+  let top = null;
+  for (const g of games) for (const t of engine.boxFor(g.id).values()) {
+    const nv = nflverse.get(t.id);
+    if (!nv && !t.name) continue;
+    if (!top || t.ppr > top.pts) top = { id: t.id, name: nv?.name || t.name, pos: nv?.pos || '', team: nv?.team || t.team, pts: t.ppr };
+  }
+  const next = games.filter((g) => g.state === 'pre' && g.start > now).sort((a, b) => a.start - b.start)[0];
+  res.json({ week, live: games.filter((g) => g.state === 'in').length, games: games.length, final: games.filter((g) => g.state === 'post').length,
+    playsWeek: count(), playsToday: count('AND ts >= ?', dayStart), biggest, top: top && top.pts > 0 ? top : null,
+    next: next ? { start: next.start, away: next.away.abbr, home: next.home.abbr } : null, now });
+});
+
 // Every player's PPR for a week (Players tab): live box scores, plus, for the current week, everyone on the
 // slate who hasn't played yet, so the list is complete before kickoff.
 app.get('/api/players', (req, res) => {

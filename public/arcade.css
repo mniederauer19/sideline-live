@@ -467,3 +467,44 @@ body.quake .main { animation: shake 0.6s cubic-bezier(.36,.07,.19,.97); }
 @keyframes shake { 10%, 90% { transform: translate(-1px, 0); } 20%, 80% { transform: translate(3px, -1px); } 30%, 50%, 70% { transform: translate(-5px, 1px) rotate(-0.4deg); } 40%, 60% { transform: translate(5px, -1px) rotate(0.4deg); } }
 
 @media (prefers-reduced-motion: reduce) { .lc-wrap.shake, body.quake .main { animation: none; } }
+
+/* ---------- Plays page header: headline for the moment, live numbers, your teams ---------- */
+html[data-look] .page-head.feed-head { padding-bottom: 14px; margin-bottom: 14px; }
+html[data-look] .page-head.feed-head h1 { font-size: clamp(34px, 4.6vw, 54px); line-height: 1; }
+.feed-head h1 #ftPlays, .feed-head h1 #ftCd { color: var(--gold); font-variant-numeric: tabular-nums; }
+.ft-live { display: inline-flex; align-items: center; gap: 6px; color: var(--live); }
+.ft-live i, .fs-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 0 var(--live); animation: rzp 1.4s infinite; }
+.fs-dot { margin-right: 7px; vertical-align: middle; }
+.fs-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 0 0 12px; }
+.fs-c { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px; background: var(--card); text-align: left; color: var(--ink); }
+button.fs-c:hover { border-color: var(--gold); }
+.fs-c small { font: var(--label-w2) 9.5px/1.2 var(--label-font); letter-spacing: 1.4px; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+.fs-c b { font: 700 21px/1 var(--num); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fs-c em { font-style: normal; color: var(--gold); }
+.fs-c.live { border-color: color-mix(in srgb, var(--live) 55%, var(--line)); }
+.fs-c.live b { color: var(--live); }
+.fs-load .fs-c { height: 56px; background: linear-gradient(90deg, var(--card), var(--card-2), var(--card)); background-size: 200% 100%; animation: shine 1.4s linear infinite; }
+#fsPlays.bump, #ftPlays.bump { animation: bumpn 0.6s ease-out; display: inline-block; }
+@keyframes bumpn { 30% { transform: scale(1.18); color: var(--pos); } }
+.my-bar { display: flex; align-items: center; gap: 8px; margin: 0 0 14px; overflow-x: auto; scrollbar-width: none; }
+.my-bar::-webkit-scrollbar { display: none; }
+.my-bar > .label { flex: 0 0 auto; margin-right: 2px; }
+.mb-c { flex: 0 0 auto; display: flex; flex-direction: column; gap: 3px; padding: 8px 12px; border: 1px solid var(--line-2); border-radius: 12px; color: var(--ink); max-width: 190px; }
+.mb-c span { font: 500 11.5px/1.2 var(--body); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mb-c b { font: 700 18px/1 var(--num); } .mb-c b i { font-style: normal; color: var(--dim); margin: 0 3px; }
+.mb-c small { font-size: 10.5px; color: var(--live); }
+.mb-c.up { border-color: color-mix(in srgb, var(--pos) 60%, var(--line)); } .mb-c.up b { color: var(--pos); }
+.mb-c.down { border-color: color-mix(in srgb, var(--neg) 55%, var(--line)); }
+.feed-modes .fmt-seg:not(.mode-seg) { margin-left: 0; }
+.feed-credit { margin-top: 18px; text-align: center; font-size: 12px; color: var(--dim); }
+@media (max-width: 720px) {
+  html[data-look] .page-head.feed-head { padding: 12px 0 10px; margin-bottom: 10px; }
+  html[data-look] .page-head.feed-head h1 { font-size: 27px; letter-spacing: -0.5px; }
+  .feed-head .label { font-size: 10px; margin-bottom: 4px; }
+  .fs-strip { display: flex; overflow-x: auto; scrollbar-width: none; margin-left: -16px; margin-right: -16px; padding: 0 16px; }
+  .fs-strip::-webkit-scrollbar { display: none; }
+  .fs-c { flex: 0 0 auto; padding: 8px 11px; }
+  .fs-c b { font-size: 18px; }
+  .feed-modes { gap: 8px; }
+}
+@media (prefers-reduced-motion: reduce) { .ft-live i, .fs-dot, .fs-load .fs-c, #fsPlays.bump, #ftPlays.bump { animation: none; } }
