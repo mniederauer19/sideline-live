@@ -171,7 +171,7 @@
         <p class="px17-kick">How it works</p>
         <ol class="px17-how">
           <li><b>Spin.</b> A random team and decade, from the 1970s to today.</li>
-          <li><b>Draft.</b> Take one player's best season with that team in that decade: QB, 2 RB, 2 WR, TE, FLEX, a kicker or the defense.</li>
+          <li><b>Draft.</b> Name a player who played for that team in that decade (no list to pick from). If he did, flip through his seasons with them and draft one: QB, 2 RB, 2 WR, TE, FLEX, a kicker or the defense.</li>
           <li><b>Re-spin.</b> One per round: a new team, or the same team in a new decade.</li>
           <li><b>Play.</b> Each player scores his real PPR points per game from that season, with hot and cold weeks, and misses the games he missed that year.</li>
           <li><b>Make the playoffs.</b> 14 weeks in a 12-team league. The top 8 make it. Lose once in the playoffs and you're out.</li>
@@ -222,19 +222,55 @@
       <div class="bar"><i style="width:${Math.min(100, (per / max) * 100).toFixed(1)}%"></i><u style="left:${((opp / max) * 100).toFixed(1)}%" title="Average opponent"></u></div>
       <small class="note">The line is the average opponent: ${fmt(opp, 0)} a week.</small></div>`;
   }
+  // The draft: no board. Type a player who played for this team in this decade; if he did, his seasons
+  // with them show up as years to flip between, and you draft the one you want.
+  S.s17.names = null;
+  const loadNames = () => S.s17.names || (S.s17.names = api('/api/170/names').then((r) => r.names || []).catch(() => []));
   function boardHtml(run, sp) {
-    const ro = sp.roster;
-    return `<p class="px17-kick">Draft board · best season with the ${esc(sp.name)}</p>
-      ${ro.players.map((p, i) => {
-        const taken = run.picks.some((x) => x.name === p.name);
-        const where = taken ? [] : slotsFor(run, p.pos);
-        return `<div class="px17-p ${where.length ? '' : 'no'}" style="--d:${Math.min(i, 10) * 45}ms"><span class="pos ${p.pos}">${p.pos}</span>
-          <div class="pi"><b>${esc(p.name)}</b><small>${sp.decade ? `<em>${p.year}</em> · ` : ''}${p.g} of ${p.games || ro.games} games · ${esc(statLine(p))}</small></div>
-          <div class="pts"><b>${fmt(ppg(p), 1)}</b><small>PPG</small></div>
-          <div class="go">${taken ? '<small>On your team</small>' : where.length ? where.map((s, j) => `<button type="button" class="px-go small ${j ? 'teal' : ''}" data-act="s17pick" data-id="${esc(p.id)}" data-slot="${s}">${j ? LABEL[s] : `Draft · ${LABEL[s]}`}</button>`).join('') : '<small>No open spot</small>'}</div></div>`;
-      }).join('')}
+    const open = openSlots(run).map((s) => LABEL[s]).join(', ');
+    const lk = S.s17.look && S.s17.look.runId === run.id && S.s17.look.round === run.round ? S.s17.look : null;
+    return `<p class="px17-kick">Draft · look up a player from the ${esc(sp.name)}</p>
+      <form class="px17-search" id="s17Find" autocomplete="off">
+        <input id="s17Q" type="search" list="s17Names" placeholder="Player name, \u201cdefense\u201d${sp.roster?.kickerEstimated ? ' or \u201ckicker\u201d' : ''}" aria-label="Look up a player" value="${esc(lk?.query || '')}" enterkeyhint="search">
+        <button type="submit" class="px-go small">Look up</button>
+        <datalist id="s17Names"></datalist>
+      </form>
+      <p class="px17-hint">Still open: ${esc(open)}. Anyone who played for them in ${sp.decade ? `the ${sp.year}s` : sp.year} counts.</p>
+      <div id="s17Result">${lk ? resultHtml(run, sp, lk) : ''}</div>
       <p class="px17-foot">PPG is his real PPR points per game that season (1 per catch, 1 per 10 yards, 6 per TD, 4 per passing TD). Kickers: 3 per field goal, 4 from 40+, 5 from 50+, 1 per extra point. Defenses: sacks, takeaways, touchdowns and points allowed. Before 1999, kickers and defenses are estimated from the team's real scores. Everyone sits out the games he missed that year.</p>`;
   }
+  function resultHtml(run, sp, lk) {
+    if (lk.busy) return '<p class="px17-wait">Looking…</p>';
+    if (!lk.found) return `<div class="px17-miss"><b>${esc(lk.query)}</b> didn't have a fantasy season with the ${esc(sp.name)}. Try someone else.</div>`;
+    const p = lk.seasons[lk.sel] || lk.seasons[0];
+    const where = lk.taken ? [] : slotsFor(run, p.pos);
+    return `<div class="px17-found">
+        <div class="px17-p big"><span class="pos ${p.pos}">${p.pos === 'DST' ? 'D/ST' : p.pos}</span>
+          <div class="pi"><b>${esc(lk.name)}</b><small>${p.g} of ${p.games} games · ${esc(statLine(p))}</small></div>
+          <div class="pts"><b>${fmt(ppg(p), 1)}</b><small>PPG</small></div></div>
+        ${lk.seasons.length > 1 ? `<div class="px17-years" role="tablist" aria-label="His seasons with them">${lk.seasons.map((x, k) => `<button type="button" role="tab" aria-selected="${k === lk.sel}" class="${k === lk.sel ? 'on' : ''}" data-act="s17yr" data-k="${k}"><b>${x.year}</b><small>${fmt(ppg(x), 1)}</small></button>`).join('')}</div>` : `<p class="px17-hint">His only season with them in ${sp.decade ? `the ${sp.year}s` : sp.year}: ${p.year}.</p>`}
+        <div class="go">${lk.taken ? '<small>Already on your team</small>' : where.length ? where.map((s, j) => `<button type="button" class="px-go ${j ? 'teal' : ''}" data-act="s17pick" data-id="${esc(p.id)}" data-slot="${s}">${j ? `Draft ${p.year} · ${LABEL[s]}` : `Draft ${p.year} · ${LABEL[s]}`}</button>`).join('') : `<small>No open spot for a ${p.pos === 'DST' ? 'defense' : p.pos}</small>`}</div>
+      </div>`;
+  }
+  function wireSearch(run, sp) {
+    const f = $('#s17Find'); if (!f) return;
+    loadNames().then((names) => { const dl = $('#s17Names'); if (dl && !dl.childElementCount) dl.innerHTML = names.map((n) => `<option value="${esc(n)}">`).join(''); });
+    f.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const q = $('#s17Q').value.trim(); if (!q) return;
+      S.s17.look = { runId: run.id, round: run.round, query: q, busy: true };
+      $('#s17Result').innerHTML = resultHtml(run, sp, S.s17.look);
+      try {
+        const r = await api('/api/170/lookup', { method: 'POST', body: { runId: run.id, name: q } });
+        // start on his best season with them
+        const best = r.found ? r.seasons.reduce((b, x, k) => (ppg(x) > ppg(r.seasons[b]) ? k : b), 0) : 0;
+        S.s17.look = { runId: run.id, round: run.round, query: q, ...r, sel: best };
+        if (r.found) buzz(10);
+      } catch (err) { S.s17.look = null; toast(err.message); }
+      const box = $('#s17Result'); if (box) box.innerHTML = S.s17.look ? resultHtml(run, sp, S.s17.look) : '';
+    });
+  }
+  SL.acts.s17yr = (t) => { const lk = S.s17.look; if (!lk) return; lk.sel = Number(t.dataset.k); const run = S.s17.run; $('#s17Result').innerHTML = resultHtml(run, run.spin, lk); };
   function draw(animate) {
     const run = S.s17.run;
     if (run.done) return drawSeason(run);
@@ -259,8 +295,8 @@
         </div>
         <div class="px17-re"><button type="button" class="px-go teal small" data-act="s17re" data-k="team" ${sp.canTeam ? '' : 'disabled'}>↻ New team</button><button type="button" class="px-go teal small" data-act="s17re" data-k="year" ${sp.canYear ? '' : 'disabled'}>↻ ${sp.decade ? 'New decade' : 'New year'}</button><small>${sp.canTeam || sp.canYear ? 'One re-spin this round' : 'Re-spin used'}</small></div>
       </section>
-      <section class="px-panel px17-board ${roll ? 'wait' : 'in'}" id="s17Board">${roll ? '<p class="px17-kick">Draft board</p><p class="px17-wait">The players show up when the spin lands.</p>' : boardHtml(run, sp)}</section>`);
-    if (roll) spinAnim(run, sp, yr, tm, kind); else { const w = $('#s17Wheel'); w?.classList.add('landed'); }
+      <section class="px-panel px17-board ${roll ? 'wait' : 'in'}" id="s17Board">${roll ? '<p class="px17-kick">Draft</p><p class="px17-wait">Look up a player once the spin lands.</p>' : boardHtml(run, sp)}</section>`);
+    if (roll) spinAnim(run, sp, yr, tm, kind); else { const w = $('#s17Wheel'); w?.classList.add('landed'); wireSearch(run, sp); }
   }
   // A slot machine: each reel is a strip of names that glides up and eases to a stop.
   // The decade stops first, then the team; only then do the logo, team colors and players appear.
@@ -289,7 +325,7 @@
       const k = $('.px17-kick', spin); if (k) k.textContent = 'Your spin';
       landed(); buzz(14);
       const b = $('#s17Board');
-      if (b) { b.innerHTML = boardHtml(run, sp); requestAnimationFrame(() => { b.classList.remove('wait'); b.classList.add('in'); }); }
+      if (b) { b.innerHTML = boardHtml(run, sp); wireSearch(run, sp); requestAnimationFrame(() => { b.classList.remove('wait'); b.classList.add('in'); }); }
     });
   }
   function landed() { S.s17.st?.flash('244,196,78', 0.45); S.s17.st?.cheer(0.35); }
@@ -305,6 +341,7 @@
       buzz(15); S.s17.st?.cheer(0.6);
       draw(true); window.scrollTo({ top: 0, behavior: calm.matches ? 'auto' : 'smooth' });
     } catch (e) { toast(e.message); draw(false); }
+    S.s17.look = null;
   };
 
   // ---------- the season: a scoreboard that plays out week by week ----------

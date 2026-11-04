@@ -126,6 +126,35 @@ function roster(team, year, decade = false) {
   return { team, year, name: eraName(team, year), games: s.g, players: players.sort((a, b) => worth(b) - worth(a)) };
 }
 
+// ---------- looking players up (the draft board stays hidden: you have to know who played there) ----------
+const norm = (n) => String(n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\b(jr|sr|ii|iii|iv|v)\.?$/, '').replace(/[^a-z]/g, '');
+const lastName = (n) => norm(String(n || '').replace(/\s+(jr\.?|sr\.?|ii|iii|iv|v)$/i, '').split(/\s+/).pop());
+const yearsIn = (cur) => (cur.decade ? yearsOf(cur.team).filter((y) => inDecade(y, cur.year)) : [cur.year]);
+const DEF_WORDS = /^(dst|d\/?st|def|defense|defence|thedefense)$/;
+// Every season a player had with the spun team in the spun decade (or year). A full name, or a last name
+// that only one player there has. "Defense" finds the D/ST; "kicker" finds the team's kicking before 1999.
+function seasonsFor(cur, query) {
+  const q = norm(query), ql = lastName(query), all = [];
+  for (const y of yearsIn(cur)) for (const p of roster(cur.team, y)?.players || []) all.push(p);
+  let hits = all.filter((p) => norm(p.name) === q);
+  if (!hits.length && DEF_WORDS.test(String(query || '').toLowerCase().replace(/[^a-z/]/g, ''))) hits = all.filter((p) => p.pos === 'DST');
+  if (!hits.length && /^(k|kicker|pk|placekicker)$/.test(q)) hits = all.filter((p) => p.pos === 'K' && p.est);
+  if (!hits.length && ql.length > 2) {
+    const byLast = all.filter((p) => p.pos !== 'DST' && !p.est && lastName(p.name) === ql);
+    if (new Set(byLast.map((p) => p.name)).size === 1) hits = byLast;
+  }
+  return hits.sort((a, b) => a.year - b.year);
+}
+// Every name in the game, for the search box's suggestions (any team, any year, so it gives nothing away)
+let NAMES_CACHE = null;
+function allNames() {
+  if (NAMES_CACHE) return NAMES_CACHE;
+  const set = new Set();
+  for (const y of YEARS) for (const rows of Object.values(DATA.seasons[y].teams)) for (const r of rows) set.add(r[0]);
+  for (const t of Object.values(KDST.k)) for (const list of Object.values(t)) for (const r of list) if (r[0] !== '~kicker') set.add(r[0]);
+  return (NAMES_CACHE = [...set].sort());
+}
+
 // ---------- the season ----------
 const OPP_MEAN = 142, OPP_SD = 24, NOISE = 0.42;
 function normal(r) { let u = 0, v = 0; while (!u) u = r(); while (!v) v = r(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); }
@@ -197,7 +226,7 @@ function mount(app, { A }) {
     const sp = spins(run.mode, run.seed).rounds[run.round] || null;
     const out = { id: run.id, mode: run.mode, day: run.day, number: run.day ? dayNo(run.day) : null, round: run.round, picks: picks.map((p) => ({ ...p, games: DATA.seasons[p.year]?.g })), done: !!run.finished_at || run.round >= ROUNDS, slots: picks.length && run.finished_at && picks.length < ROUNDS ? picks.map((p) => p.slot) : SLOTS,
       franchise: run.mode === 'franchise' ? spins(run.mode, run.seed).franchise : null, mine: !run.user_id || run.user_id === meId, counted: !!run.counted, opp: OPP_MEAN };
-    if (!out.done && cur) out.spin = { ...cur, name: spinName(cur), roster: roster(cur.team, cur.year, cur.decade), canTeam: !run.rerolled && !!sp?.altTeam, canYear: !run.rerolled && !!sp?.altYear };
+    if (!out.done && cur) { const ro = roster(cur.team, cur.year, cur.decade); out.spin = { ...cur, name: spinName(cur), roster: { team: ro?.team, year: ro?.year, name: ro?.name, games: ro?.games, kickerEstimated: yearsIn(cur).some((y) => y < 1999) }, canTeam: !run.rerolled && !!sp?.altTeam, canYear: !run.rerolled && !!sp?.altYear }; }
     if (out.done) {
       const lineup = picks.map((p) => ({ ...p, games: DATA.seasons[p.year].g }));
       out.result = simulate(lineup, `${run.mode}:${run.seed}:${run.id}`);
@@ -218,6 +247,17 @@ function mount(app, { A }) {
       .run(id, req.user?.id || null, mode, seed, mode === 'daily' ? day : null, JSON.stringify({ team: first.team, year: first.year, decade: !!first.decade }), Date.now());
     save(id);
     res.json({ run: view(load(id), req.user?.id) });
+  });
+  app.get('/api/170/names', (_req, res) => { res.set('cache-control', 'public, max-age=86400'); res.json({ names: allNames() }); });
+  app.post('/api/170/lookup', (req, res) => {
+    const run = own(req, res); if (!run) return;
+    const cur = JSON.parse(run.cur);
+    const q = String(req.body?.name || '').slice(0, 60);
+    const hits = seasonsFor(cur, q);
+    if (!hits.length) return res.json({ found: false, query: q, team: spinName(cur) });
+    const picks = JSON.parse(run.picks);
+    res.json({ found: true, name: hits[0].name, pos: hits[0].pos, taken: picks.some((x) => x.name === hits[0].name),
+      seasons: hits.map((p) => ({ ...p, games: DATA.seasons[p.year]?.g })) });
   });
   app.get('/api/170/run/:id', (req, res) => {
     const run = load(req.params.id);
@@ -243,8 +283,9 @@ function mount(app, { A }) {
   app.post('/api/170/pick', (req, res) => {
     const run = own(req, res); if (!run) return;
     const cur = JSON.parse(run.cur);
-    const ro = roster(cur.team, cur.year, cur.decade);
-    const p = ro?.players.find((x) => x.id === req.body?.playerId);
+    // any season the player had with this team in this decade (you picked the year after looking him up)
+    let p = null;
+    for (const y of yearsIn(cur)) { p = (roster(cur.team, y)?.players || []).find((x) => x.id === req.body?.playerId); if (p) break; }
     if (!p) return res.status(400).json({ error: 'That player wasn\'t on this team that year.' });
     const picks = JSON.parse(run.picks);
     if (picks.some((x) => x.name === p.name)) return res.status(400).json({ error: `${p.name} is already on your team.` });

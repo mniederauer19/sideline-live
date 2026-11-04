@@ -206,3 +206,23 @@
   .px17 *, .px17 *::before, .px17 *::after { animation: none !important; transition: none !important; }
   .px17-after { opacity: 1; transform: none; pointer-events: auto; }
 }
+
+/* ---------- draft by looking players up ---------- */
+.px17-search { display: flex; gap: 8px; margin: 6px 0 8px; }
+.px17-search input { flex: 1; min-width: 0; padding: 12px 14px; border: 2px solid #3d4590; border-radius: 0; background: #0f1330; color: #e9ecff; font: 600 16px/1.2 var(--body, system-ui); }
+.px17-search input:focus { outline: none; border-color: #f4c44e; }
+.px17-hint { margin: 0 0 10px; color: #9aa3d6; font-size: 13px; }
+.px17-miss { padding: 12px 14px; border: 2px dashed #3d4590; color: #c9cff5; font-size: 14px; }
+.px17-miss b { color: #fff; }
+.px17-found { display: flex; flex-direction: column; gap: 10px; padding: 12px; border: 2px solid #f4c44e; background: rgba(244, 196, 78, .06); animation: px17found .35s cubic-bezier(.2,.8,.2,1); }
+@keyframes px17found { from { opacity: 0; transform: translateY(6px); } }
+.px17-p.big .pi b { font-size: 18px; }
+.px17-years { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.px17-years::-webkit-scrollbar { display: none; }
+.px17-years button { flex: none; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 62px; padding: 7px 10px; border: 2px solid #3d4590; background: #111430; color: #c9cff5; cursor: pointer; }
+.px17-years button b { font: 700 15px/1 var(--px, monospace); color: #fff; }
+.px17-years button small { font-size: 11px; color: #9aa3d6; }
+.px17-years button.on { border-color: #f4c44e; background: rgba(244, 196, 78, .14); }
+.px17-years button.on small { color: #f4c44e; }
+.px17-found .go { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (prefers-reduced-motion: reduce) { .px17-found { animation: none; } }
